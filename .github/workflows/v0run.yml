@@ -17,7 +17,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install required packages
-        run: pip install numpy pandas scikit-learn
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy pandas scikit-learn
 
       - name: Restore checkpoints from the previous run (if any)
         uses: dawidd6/action-download-artifact@v6
@@ -28,9 +30,30 @@ jobs:
           if_no_artifact_found: warn
 
       - name: Run the validation for this chunk of time
+        working-directory: v0_flat
         run: |
-          cd v0_flat
-          timeout 5h50m python3 run_v0_parallel.py --workers 2 || true
+          set +e
+          timeout --signal=SIGTERM --kill-after=60s 5h40m python3 -u run_v0_parallel.py --workers 2
+          EXIT_CODE=$?
+          echo "Python/timeout exit code: $EXIT_CODE"
+          if [ "$EXIT_CODE" -eq 0 ]; then
+            echo "V0 finished normally."
+          elif [ "$EXIT_CODE" -eq 124 ]; then
+            echo "Time limit reached. Checkpoints should allow the next run to resume."
+          else
+            echo "V0 FAILED with exit code $EXIT_CODE"
+            exit "$EXIT_CODE"
+          fi
+
+      - name: Show checkpoint status
+        if: always()
+        working-directory: v0_flat
+        run: |
+          echo "Results directory:"
+          find results -maxdepth 3 -type f 2>/dev/null | sort || true
+          echo ""
+          echo "Number of checkpoint JSON files:"
+          find results/checkpoints -name "*.json" -type f 2>/dev/null | wc -l || true
 
       - name: Save progress so the next run can resume
         if: always()
@@ -39,6 +62,8 @@ jobs:
           name: v0-checkpoints
           path: v0_flat/results/checkpoints
           retention-days: 90
+          if-no-files-found: warn
+          overwrite: true
 
       - name: Save the final report, once everything is complete
         if: always()
@@ -46,4 +71,6 @@ jobs:
         with:
           name: v0-report
           path: v0_flat/results/v0_report_parallel.json
+          retention-days: 90
           if-no-files-found: ignore
+          overwrite: true
