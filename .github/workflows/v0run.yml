@@ -21,7 +21,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install numpy pandas scikit-learn
 
-      - name: Restore checkpoints from the previous run (if any)
+      - name: Show workflow commit and runner
+        run: |
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          git rev-parse HEAD
+          git status --short
+
+      - name: Prepare result directories
+        run: |
+          mkdir -p v0_flat/results/checkpoints
+          ls -la v0_flat/results
+
+      - name: Restore checkpoints from previous run (if any)
         uses: dawidd6/action-download-artifact@v6
         continue-on-error: true
         with:
@@ -29,17 +40,24 @@ jobs:
           path: v0_flat/results/checkpoints
           if_no_artifact_found: warn
 
-      - name: Run the validation for this chunk of time
+      - name: Verify V0 runner
+        working-directory: v0_flat
+        run: |
+          python3 --version
+          python3 -m py_compile run_v0_parallel.py parallel_runner.py config_final.py
+          echo "Runner compiled successfully."
+
+      - name: Run V0 validation
         working-directory: v0_flat
         run: |
           set +e
           timeout --signal=SIGTERM --kill-after=60s 20400s python3 -u run_v0_parallel.py --workers 2
           EXIT_CODE=$?
-          echo "Python/timeout exit code: $EXIT_CODE"
+          echo "V0 exit code: $EXIT_CODE"
           if [ "$EXIT_CODE" -eq 0 ]; then
             echo "V0 finished normally."
           elif [ "$EXIT_CODE" -eq 124 ]; then
-            echo "Time limit reached. Checkpoints should allow the next run to resume."
+            echo "Time limit reached; checkpoints will be preserved."
           else
             echo "V0 FAILED with exit code $EXIT_CODE"
             exit "$EXIT_CODE"
@@ -49,13 +67,12 @@ jobs:
         if: always()
         working-directory: v0_flat
         run: |
-          echo "Results directory:"
-          find results -maxdepth 3 -type f 2>/dev/null | sort || true
-          echo ""
-          echo "Number of checkpoint JSON files:"
-          find results/checkpoints -name "*.json" -type f 2>/dev/null | wc -l || true
+          echo "=== Results ==="
+          find results -maxdepth 3 -type f -printf '%p\n' 2>/dev/null | sort || true
+          echo "=== Checkpoint count ==="
+          find results/checkpoints -type f -name '*.json' 2>/dev/null | wc -l || true
 
-      - name: Save progress so the next run can resume
+      - name: Save progress
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -65,7 +82,7 @@ jobs:
           if-no-files-found: warn
           overwrite: true
 
-      - name: Save the final report, once everything is complete
+      - name: Save final report
         if: always()
         uses: actions/upload-artifact@v4
         with:
