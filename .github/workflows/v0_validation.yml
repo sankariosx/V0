@@ -45,7 +45,7 @@ jobs:
           python3 -m py_compile run_v0_parallel.py parallel_runner.py config_final.py
           echo 'V0 runner verification passed.'
 
-      - name: Run V0
+      - name: Run V0 validation chunk
         working-directory: v0_flat
         run: |
           set +e
@@ -90,3 +90,9 @@ jobs:
           retention-days: 90
           if-no-files-found: ignore
           overwrite: true
+
+      - name: Continuation note
+        if: always()
+        run: |
+          echo 'This workflow resumes from uploaded checkpoints on the next manual run.'
+          echo 'Automatic self-dispatch is intentionally not enabled because the workflow token cannot be assumed to have Actions write permission.'
