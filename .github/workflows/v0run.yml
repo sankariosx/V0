@@ -1,0 +1,48 @@
+name: V0 Validation Run
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  run-chunk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install required packages
+        run: pip install numpy pandas scikit-learn
+
+      - name: Restore checkpoints from the previous run (if any)
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true
+        with:
+          name: v0-checkpoints
+          path: results/checkpoints
+          if_no_artifact_found: warn
+
+      - name: Run the validation for this chunk of time
+        run: |
+          timeout 5h50m python3 run_v0_parallel.py --workers 2 || true
+
+      - name: Save progress so the next run can resume
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v0-checkpoints
+          path: results/checkpoints
+          retention-days: 90
+
+      - name: Save the final report, once everything is complete
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v0-report
+          path: results/v0_report_parallel.json
+          if-no-files-found: ignore
