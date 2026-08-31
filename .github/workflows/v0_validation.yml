@@ -1,0 +1,92 @@
+name: V0 Validation Clean Run
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  run-v0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy pandas scikit-learn
+
+      - name: Show exact commit
+        run: |
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          git rev-parse HEAD
+          git log -1 --oneline
+
+      - name: Prepare checkpoint directory
+        run: mkdir -p v0_flat/results/checkpoints
+
+      - name: Restore previous checkpoints
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true
+        with:
+          name: v0-checkpoints
+          path: v0_flat/results/checkpoints
+          if_no_artifact_found: warn
+
+      - name: Verify runner
+        working-directory: v0_flat
+        run: |
+          python3 --version
+          python3 -m py_compile run_v0_parallel.py parallel_runner.py config_final.py
+          echo 'V0 runner verification passed.'
+
+      - name: Run V0
+        working-directory: v0_flat
+        run: |
+          set +e
+          timeout --signal=SIGTERM --kill-after=60s 20400s python3 -u run_v0_parallel.py --workers 2
+          code=$?
+          echo "V0 exit code: $code"
+          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then
+            echo 'V0 failed.'
+            exit "$code"
+          fi
+          if [ "$code" -eq 124 ]; then
+            echo 'Time limit reached; checkpoints will be uploaded.'
+          else
+            echo 'V0 completed normally.'
+          fi
+
+      - name: Show results
+        if: always()
+        working-directory: v0_flat
+        run: |
+          echo '=== Files ==='
+          find results -maxdepth 3 -type f -print 2>/dev/null | sort || true
+          echo '=== Checkpoint count ==='
+          find results/checkpoints -type f -name '*.json' 2>/dev/null | wc -l || true
+
+      - name: Upload checkpoints
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v0-checkpoints
+          path: v0_flat/results/checkpoints
+          retention-days: 90
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: Upload final report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v0-report
+          path: v0_flat/results/v0_report_parallel.json
+          retention-days: 90
+          if-no-files-found: ignore
+          overwrite: true
