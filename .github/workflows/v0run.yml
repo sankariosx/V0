@@ -33,7 +33,7 @@ jobs:
         working-directory: v0_flat
         run: |
           set +e
-          timeout --signal=SIGTERM --kill-after=60s 5h40m python3 -u run_v0_parallel.py --workers 2
+          timeout --signal=SIGTERM --kill-after=60s 20400s python3 -u run_v0_parallel.py --workers 2
           EXIT_CODE=$?
           echo "Python/timeout exit code: $EXIT_CODE"
           if [ "$EXIT_CODE" -eq 0 ]; then
