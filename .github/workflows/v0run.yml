@@ -24,11 +24,12 @@ jobs:
         continue-on-error: true
         with:
           name: v0-checkpoints
-          path: results/checkpoints
+          path: v0_flat/results/checkpoints
           if_no_artifact_found: warn
 
       - name: Run the validation for this chunk of time
         run: |
+          cd v0_flat
           timeout 5h50m python3 run_v0_parallel.py --workers 2 || true
 
       - name: Save progress so the next run can resume
@@ -36,7 +37,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: v0-checkpoints
-          path: results/checkpoints
+          path: v0_flat/results/checkpoints
           retention-days: 90
 
       - name: Save the final report, once everything is complete
@@ -44,5 +45,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: v0-report
-          path: results/v0_report_parallel.json
+          path: v0_flat/results/v0_report_parallel.json
           if-no-files-found: ignore
