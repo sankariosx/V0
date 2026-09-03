@@ -23,6 +23,9 @@ def circular_block_bootstrap(y, condition, block_len=64, n_boot=2000, seed=None)
     return {"effect": float(obs_effect), "p_value": float(p_val), "boot_std": float(np.std(boot_effects)), "n_cond": int(cond.sum()), "boot_effects": boot_effects}
 
 def benjamini_hochberg(p_values, q=0.10):
+    """Benjamini-Hochberg FDR control. Kept for exploratory/FDR use.
+    It controls expected false-discovery proportion, not the probability of
+    at least one false rejection (FWER)."""
     p = np.asarray(p_values); n = len(p)
     if n == 0: return np.array([], dtype=bool), 0.0
     order = np.argsort(p); sorted_p = p[order]
@@ -32,6 +35,33 @@ def benjamini_hochberg(p_values, q=0.10):
     reject = np.zeros(n, dtype=bool)
     if k > 0: reject[order[:k]] = True
     return reject, (thresholds[k-1] if k>0 else 0.0)
+
+def holm_step_down(p_values, alpha=0.05):
+    """Holm step-down multiple-testing procedure.
+
+    Controls family-wise error rate (FWER): the probability of one or more
+    false rejections, under arbitrary dependence of valid p-values. This is
+    the appropriate correction for Test A/C, whose acceptance criterion is
+    an empirical probability of at least one false discovery per market.
+    """
+    p = np.asarray(p_values, dtype=float)
+    n = len(p)
+    if n == 0:
+        return np.array([], dtype=bool), alpha
+    order = np.argsort(p)
+    sorted_p = p[order]
+    reject = np.zeros(n, dtype=bool)
+    cutoff = alpha
+    for rank, idx in enumerate(order):
+        threshold = alpha / (n - rank)
+        cutoff = threshold
+        if sorted_p[rank] <= threshold:
+            reject[idx] = True
+        else:
+            # Holm is step-down: once one ordered hypothesis fails, all later
+            # hypotheses are not rejected.
+            break
+    return reject, cutoff
 
 def bonferroni(p_values, alpha=0.05):
     n = len(p_values); thresh = alpha / n if n>0 else alpha
