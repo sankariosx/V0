@@ -6,11 +6,12 @@ from config_final import *
 from generators import generate_null_market, generate_injected_market, generate_adversarial_null, verify_no_predictive_signal
 from features import build_features
 from ebm_discovery import SimpleEBM
-from validation import evaluate_hypothesis, benjamini_hochberg, split_discovery_validation, recompute_condition
+from validation import evaluate_hypothesis, benjamini_hochberg, holm_step_down, split_discovery_validation, recompute_condition
 from ledger import clear_ledger, get_ledger_count, append_hypotheses, check_budget
 
 DISCOVERY_FRAC = 0.6  # fraction of bars used for search; the rest is held out for testing
 MIN_SAMPLES_VAL = 100  # min samples a recomputed condition needs in the held-out slice to be testable
+MULTIPLE_TEST_ALPHA = ALPHA_FINAL
 
 def run_discovery_on_dataset(features, y, seed=None):
     model = SimpleEBM(outer_bags=OUTER_BAGS, bag_frac=BAG_SAMPLE_FRAC, boost_rounds=BOOST_ROUNDS, max_depth=TREE_MAX_DEPTH, top_features_for_pairs=TOP_FEATURES_FOR_PAIRS, max_interactions=MAX_INTERACTIONS, seed=seed)
@@ -20,10 +21,7 @@ def run_discovery_on_dataset(features, y, seed=None):
 
 def validate_candidates(feat_val, y_val, candidates, block_len=BLOCK_LENGTH, n_boot=N_BOOTSTRAP, seed=None):
     """Tests each candidate's fixed rule (feature/threshold/direction chosen
-    on the DISCOVERY slice) against the HELD-OUT validation slice. A
-    candidate that only looked good on the data it was mined from will not
-    survive this: its recomputed effect on fresh data regresses toward zero,
-    so the bootstrap p-value is no longer artificially small."""
+    on the DISCOVERY slice) against the HELD-OUT validation slice."""
     validated=[]
     for cand in candidates:
         try:
@@ -33,7 +31,6 @@ def validate_candidates(feat_val, y_val, candidates, block_len=BLOCK_LENGTH, n_b
         n_cond_val = int(cond.sum())
         cand_validated = {k:v for k,v in cand.items() if k!="condition_mask"}
         if n_cond_val < MIN_SAMPLES_VAL:
-            # Not enough held-out samples to test this rule -> can't confirm it, treat as non-significant
             cand_validated.update({"boot_p_value": 1.0, "boot_effect": 0.0, "boot_std": 1.0, "n_cond_val": n_cond_val})
         else:
             res = evaluate_hypothesis(y_val.values, cond, block_len=block_len, n_boot=n_boot, seed=seed)
@@ -61,11 +58,11 @@ def test_A_null_markets(n_markets=TEST_A_N_MARKETS, seed_base=1000):
             if can_afford:
                 append_hypotheses([{"market":"testA","seed":seed,"type":v["type"],"features":v["features"]} for v in validated])
             p_vals=[v["boot_p_value"] for v in validated]
-            reject,_=benjamini_hochberg(p_vals, q=FDR_Q)
+            reject,_=holm_step_down(p_vals, alpha=MULTIPLE_TEST_ALPHA)
             n_surv=int(reject.sum())
-            print(f"    After BH FDR {FDR_Q}: {n_surv} surviving")
+            print(f"    After Holm FWER alpha={MULTIPLE_TEST_ALPHA}: {n_surv} surviving")
             if n_surv>0: false_positives+=1
-        results.append({"market_idx":i,"seed":seed,"verification":checks,"n_candidates":len(candidates),"n_surviving_BH":n_surv,"candidates":validated})
+        results.append({"market_idx":i,"seed":seed,"verification":checks,"n_candidates":len(candidates),"n_surviving_Holm":n_surv,"candidates":validated})
     fpr=false_positives/n_markets
     print(f"TEST A RESULT: FPR = {false_positives}/{n_markets} = {fpr:.3f} (threshold {MAX_FPR_TEST_A})")
     return {"fpr":fpr,"false_positives":false_positives,"n_markets":n_markets,"details":results}
@@ -89,7 +86,7 @@ def test_B_injected(effect_sizes=TEST_B_EFFECT_SIZES, n_per_size=TEST_B_N_MARKET
                 if len(candidates)>0:
                     validated=validate_candidates(feat_val, y_val, candidates, seed=seed)
                     p_vals=[v["boot_p_value"] for v in validated]
-                    reject,_=benjamini_hochberg(p_vals, q=FDR_Q)
+                    reject,_=holm_step_down(p_vals, alpha=MULTIPLE_TEST_ALPHA)
                     surviving=[validated[i] for i in range(len(validated)) if reject[i]]
                 detected=False
                 if len(surviving)>0:
@@ -129,9 +126,9 @@ def test_C_adversarial(n_markets=TEST_C_N_MARKETS, seed_base=3000):
         if len(candidates)>0:
             validated=validate_candidates(feat_val, y_val, candidates, seed=seed)
             p_vals=[v["boot_p_value"] for v in validated]
-            reject,_=benjamini_hochberg(p_vals, q=FDR_Q)
+            reject,_=holm_step_down(p_vals, alpha=MULTIPLE_TEST_ALPHA)
             n_surv=int(reject.sum())
-            print(f"    After BH: {n_surv} surviving")
+            print(f"    After Holm FWER alpha={MULTIPLE_TEST_ALPHA}: {n_surv} surviving")
             if n_surv>0: false_positives+=1
         results.append({"market_idx":i,"seed":seed,"n_candidates":len(candidates),"n_surviving":n_surv,"candidates":validated})
     fpr=false_positives/n_markets
@@ -143,6 +140,7 @@ def run_all_tests():
     print(f"Ledger cleared. Budget {HYPOTHESIS_BUDGET}")
     print(f"Final config: N_BARS={N_BARS} TOP={TOP_FEATURES_FOR_PAIRS} MAX={MAX_INTERACTIONS} BAGS={OUTER_BAGS} ROUNDS={BOOST_ROUNDS}")
     print(f"Purified interaction scoring replacing FAST screening, EBM validation kept")
+    print(f"Multiple-testing control: Holm step-down FWER alpha={MULTIPLE_TEST_ALPHA}")
     resA=test_A_null_markets(n_markets=TEST_A_N_MARKETS)
     resB=test_B_injected(effect_sizes=TEST_B_EFFECT_SIZES, n_per_size=TEST_B_N_MARKETS_PER_SIZE)
     resC=test_C_adversarial(n_markets=TEST_C_N_MARKETS)
@@ -181,7 +179,7 @@ def run_all_tests():
             reasons.append(f"Test B 3-way EXPECTED FAIL: power {power_3way_03:.2f} <= {MAX_POWER_3WAY_EXPECTED} - correctly identifies model incapability for 3-way")
     except Exception as e:
         reasons.append(f"Test B 3-way: {e}")
-    report={"proceed":proceed,"reasons":reasons,"test_A":resA,"test_B":resB,"test_C":resC,"ledger_used":used,"model":"SimpleEBM with purified interaction scoring (TOP30 MAX50)"}
+    report={"proceed":proceed,"reasons":reasons,"test_A":resA,"test_B":resB,"test_C":resC,"ledger_used":used,"model":"SimpleEBM with purified interaction scoring (TOP30 MAX50), Holm FWER validation"}
     out_path=Path(__file__).parent / "results" / "v0_report.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
