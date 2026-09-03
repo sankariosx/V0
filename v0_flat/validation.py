@@ -22,11 +22,9 @@ def circular_block_bootstrap(y, condition, block_len=64, n_boot=2000, seed=None)
     p_val = np.mean(np.abs(boot_effects) >= np.abs(obs_effect) + 1e-12)
     return {"effect": float(obs_effect), "p_value": float(p_val), "boot_std": float(np.std(boot_effects)), "n_cond": int(cond.sum()), "boot_effects": boot_effects}
 
-def benjamini_hochberg(p_values, q=0.10):
-    """Benjamini-Hochberg FDR control. Kept for exploratory/FDR use.
-    It controls expected false-discovery proportion, not the probability of
-    at least one false rejection (FWER)."""
-    p = np.asarray(p_values); n = len(p)
+def benjamini_hochberg_fdr(p_values, q=0.10):
+    """True Benjamini-Hochberg FDR procedure, retained for exploratory use."""
+    p = np.asarray(p_values, dtype=float); n = len(p)
     if n == 0: return np.array([], dtype=bool), 0.0
     order = np.argsort(p); sorted_p = p[order]
     thresholds = (np.arange(1, n+1)/n) * q
@@ -37,12 +35,12 @@ def benjamini_hochberg(p_values, q=0.10):
     return reject, (thresholds[k-1] if k>0 else 0.0)
 
 def holm_step_down(p_values, alpha=0.05):
-    """Holm step-down multiple-testing procedure.
+    """Holm step-down multiple-testing procedure controlling FWER.
 
-    Controls family-wise error rate (FWER): the probability of one or more
-    false rejections, under arbitrary dependence of valid p-values. This is
-    the appropriate correction for Test A/C, whose acceptance criterion is
-    an empirical probability of at least one false discovery per market.
+    FWER is the probability of one or more false rejections. Holm's procedure
+    controls FWER at alpha for valid p-values without requiring independence
+    among the tested hypotheses, making it appropriate for the A/C validation
+    gates where one false discovery causes a market-level failure.
     """
     p = np.asarray(p_values, dtype=float)
     n = len(p)
@@ -58,10 +56,19 @@ def holm_step_down(p_values, alpha=0.05):
         if sorted_p[rank] <= threshold:
             reject[idx] = True
         else:
-            # Holm is step-down: once one ordered hypothesis fails, all later
-            # hypotheses are not rejected.
             break
     return reject, cutoff
+
+def benjamini_hochberg(p_values, q=0.05):
+    """Compatibility entry point used by the legacy parallel runner.
+
+    The validation runner historically called this function by its old name.
+    It now delegates to Holm FWER control so the parallel runner and tests.py
+    use the same statistical gate. Use benjamini_hochberg_fdr() for actual BH.
+    The argument is retained as `q` for backward compatibility, but is treated
+    as the family-wise alpha level by this compatibility wrapper.
+    """
+    return holm_step_down(p_values, alpha=q)
 
 def bonferroni(p_values, alpha=0.05):
     n = len(p_values); thresh = alpha / n if n>0 else alpha
@@ -88,8 +95,7 @@ def split_discovery_validation(feat, y, frac=0.6, purge=16):
 def recompute_condition(cand, feat_df):
     """Re-apply a candidate's discovery-set-derived rule (feature name +
     fixed threshold + direction) to a *different* dataset (the held-out
-    validation slice). This is the piece that was missing: candidates must
-    be tested on data they were not selected to fit."""
+    validation slice)."""
     ctype = cand["type"]
     if ctype == "1way":
         fname = cand["features"][0]
