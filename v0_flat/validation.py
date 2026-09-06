@@ -22,6 +22,34 @@ def circular_block_bootstrap(y, condition, block_len=64, n_boot=2000, seed=None)
     p_val = np.mean(np.abs(boot_effects) >= np.abs(obs_effect) + 1e-12)
     return {"effect": float(obs_effect), "p_value": float(p_val), "boot_std": float(np.std(boot_effects)), "n_cond": int(cond.sum()), "boot_effects": boot_effects}
 
+def circular_shift_test(y, condition, n_perm=2000, seed=None, min_shift=None):
+    """Held-out permutation test preserving the serial structure of y.
+
+    The discovery rule is fixed before this test is run. Random circular shifts
+    destroy feature/target alignment while preserving the target's marginal
+    distribution and its autocorrelation, giving a direct null distribution for
+    the observed conditional mean effect.
+    """
+    rng = np.random.default_rng(seed)
+    y = np.asarray(y, dtype=float)
+    cond = np.asarray(condition, dtype=bool)
+    n = len(y)
+    n_cond = int(cond.sum())
+    if n_cond == 0 or n < 2:
+        return {"effect": 0.0, "p_value": 1.0, "n_cond": n_cond, "perm_std": 1.0}
+    obs_effect = float(np.mean(y[cond]) - np.mean(y))
+    if min_shift is None:
+        min_shift = 64
+    if n <= 2 * min_shift:
+        min_shift = max(1, n // 10)
+    shifts = rng.integers(min_shift, n - min_shift + 1, size=n_perm)
+    perm_effects = np.empty(n_perm, dtype=float)
+    for k, shift in enumerate(shifts):
+        y_shift = np.roll(y, int(shift))
+        perm_effects[k] = np.mean(y_shift[cond]) - np.mean(y_shift)
+    p_val = (1.0 + np.sum(np.abs(perm_effects) >= abs(obs_effect))) / (n_perm + 1.0)
+    return {"effect": obs_effect, "p_value": float(p_val), "perm_std": float(np.std(perm_effects)), "n_cond": n_cond}
+
 def benjamini_hochberg_fdr(p_values, q=0.10):
     """True Benjamini-Hochberg FDR procedure, retained for exploratory use."""
     p = np.asarray(p_values, dtype=float); n = len(p)
@@ -88,12 +116,15 @@ def replication_check(y, condition, n_blocks=3, min_effect=0.05, min_pass_fracti
     return bool(passes >= required), effects
 
 def evaluate_hypothesis(y, condition, block_len=64, n_boot=2000, seed=None):
-    result = circular_block_bootstrap(y, condition, block_len=block_len, n_boot=n_boot, seed=seed)
+    """Evaluate a fixed held-out rule with a serially-valid null test.
+
+    The circular-shift p-value is primary; replication remains a hard gate.
+    """
+    result = circular_shift_test(y, condition, n_perm=n_boot, seed=seed, min_shift=block_len)
     replicated, effects = replication_check(y, condition)
     result["replication_pass"] = bool(replicated)
     result["replication_effects"] = effects
-    # Statistical significance is only admissible when the fixed rule also
-    # reproduces its direction/magnitude across the held-out period.
+    result["boot_std"] = result["perm_std"]
     if not replicated:
         result["p_value"] = 1.0
     return result
