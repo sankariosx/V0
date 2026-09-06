@@ -2,6 +2,10 @@ name: V0 Validation Run
 
 on:
   workflow_dispatch: {}
+  push:
+    paths:
+      - 'v0_flat/**'
+      - '.github/workflows/v0run.yml'
 
 jobs:
   run-chunk:
