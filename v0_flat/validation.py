@@ -35,13 +35,7 @@ def benjamini_hochberg_fdr(p_values, q=0.10):
     return reject, (thresholds[k-1] if k>0 else 0.0)
 
 def holm_step_down(p_values, alpha=0.05):
-    """Holm step-down multiple-testing procedure controlling FWER.
-
-    FWER is the probability of one or more false rejections. Holm's procedure
-    controls FWER at alpha for valid p-values without requiring independence
-    among the tested hypotheses, making it appropriate for the A/C validation
-    gates where one false discovery causes a market-level failure.
-    """
+    """Holm step-down multiple-testing procedure controlling FWER."""
     p = np.asarray(p_values, dtype=float)
     n = len(p)
     if n == 0:
@@ -60,34 +54,16 @@ def holm_step_down(p_values, alpha=0.05):
     return reject, cutoff
 
 def benjamini_hochberg(p_values, q=0.05):
-    """Compatibility entry point used by the legacy parallel runner.
-
-    The validation runner historically called this function by its old name.
-    It now delegates to Holm FWER control so the parallel runner and tests.py
-    use the same statistical gate. Use benjamini_hochberg_fdr() for actual BH.
-    The argument is retained as `q` for backward compatibility, but is treated
-    as the family-wise alpha level by this compatibility wrapper.
-    """
+    """Compatibility entry point used by the legacy parallel runner."""
     return holm_step_down(p_values, alpha=q)
 
 def bonferroni(p_values, alpha=0.05):
     n = len(p_values); thresh = alpha / n if n>0 else alpha
     return np.asarray(p_values) <= thresh, thresh
 
-def evaluate_hypothesis(y, condition, block_len=64, n_boot=2000, seed=None):
-    return circular_block_bootstrap(y, condition, block_len=block_len, n_boot=n_boot, seed=seed)
-
 def replication_check(y, condition, n_blocks=3, min_effect=0.05, min_pass_fraction=2/3):
-    """Require a discovered effect to replicate across independent temporal
-    portions of the held-out validation slice. This is an additional guard
-    against non-stationary false discoveries that happen to be significant in
-    the aggregate validation period.
-
-    The check uses fixed condition thresholds from discovery and never searches
-    for a new rule inside validation. A candidate passes when its effect keeps
-    the same sign and reaches `min_effect` in at least `min_pass_fraction` of
-    the validation blocks.
-    """
+    """Check that a fixed discovery rule reproduces a meaningful effect
+    across multiple contiguous parts of held-out validation data."""
     y = np.asarray(y, dtype=float)
     condition = np.asarray(condition, dtype=bool)
     n = len(y)
@@ -111,12 +87,21 @@ def replication_check(y, condition, n_blocks=3, min_effect=0.05, min_pass_fracti
     required = int(np.ceil(n_blocks * min_pass_fraction))
     return bool(passes >= required), effects
 
+def evaluate_hypothesis(y, condition, block_len=64, n_boot=2000, seed=None):
+    result = circular_block_bootstrap(y, condition, block_len=block_len, n_boot=n_boot, seed=seed)
+    replicated, effects = replication_check(y, condition)
+    result["replication_pass"] = bool(replicated)
+    result["replication_effects"] = effects
+    # Statistical significance is only admissible when the fixed rule also
+    # reproduces its direction/magnitude across the held-out period.
+    if not replicated:
+        result["p_value"] = 1.0
+    return result
+
 def split_discovery_validation(feat, y, frac=0.6, purge=16):
     """Time-ordered split: hypothesis GENERATION only ever sees the discovery
     slice; hypothesis TESTING only ever sees the validation slice. `purge`
-    drops a few bars at the boundary so the forward-looking target (which
-    peeks `horizon` bars ahead) can't leak discovery-period information into
-    the validation target, or vice versa."""
+    drops bars at the boundary so the forward-looking target cannot leak."""
     n = len(feat)
     disc_end = int(n * frac)
     val_start = disc_end + purge
@@ -127,9 +112,7 @@ def split_discovery_validation(feat, y, frac=0.6, purge=16):
     return feat_disc, y_disc, feat_val, y_val
 
 def recompute_condition(cand, feat_df):
-    """Re-apply a candidate's discovery-set-derived rule (feature name +
-    fixed threshold + direction) to a *different* dataset (the held-out
-    validation slice)."""
+    """Re-apply a candidate's discovery-derived rule to held-out data."""
     ctype = cand["type"]
     if ctype == "1way":
         fname = cand["features"][0]
