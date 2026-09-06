@@ -77,6 +77,40 @@ def bonferroni(p_values, alpha=0.05):
 def evaluate_hypothesis(y, condition, block_len=64, n_boot=2000, seed=None):
     return circular_block_bootstrap(y, condition, block_len=block_len, n_boot=n_boot, seed=seed)
 
+def replication_check(y, condition, n_blocks=3, min_effect=0.05, min_pass_fraction=2/3):
+    """Require a discovered effect to replicate across independent temporal
+    portions of the held-out validation slice. This is an additional guard
+    against non-stationary false discoveries that happen to be significant in
+    the aggregate validation period.
+
+    The check uses fixed condition thresholds from discovery and never searches
+    for a new rule inside validation. A candidate passes when its effect keeps
+    the same sign and reaches `min_effect` in at least `min_pass_fraction` of
+    the validation blocks.
+    """
+    y = np.asarray(y, dtype=float)
+    condition = np.asarray(condition, dtype=bool)
+    n = len(y)
+    if n_blocks < 2 or n < n_blocks * 2 or condition.sum() == 0:
+        return False, []
+    effects = []
+    edges = np.linspace(0, n, n_blocks + 1, dtype=int)
+    for i in range(n_blocks):
+        lo, hi = edges[i], edges[i+1]
+        yy = y[lo:hi]
+        cc = condition[lo:hi]
+        if cc.sum() < 30:
+            effects.append(0.0)
+            continue
+        effects.append(float(np.mean(yy[cc]) - np.mean(yy)))
+    nonzero = [e for e in effects if abs(e) >= min_effect]
+    if not nonzero:
+        return False, effects
+    dominant_sign = np.sign(np.sum(nonzero))
+    passes = sum(np.sign(e) == dominant_sign and abs(e) >= min_effect for e in effects)
+    required = int(np.ceil(n_blocks * min_pass_fraction))
+    return bool(passes >= required), effects
+
 def split_discovery_validation(feat, y, frac=0.6, purge=16):
     """Time-ordered split: hypothesis GENERATION only ever sees the discovery
     slice; hypothesis TESTING only ever sees the validation slice. `purge`
