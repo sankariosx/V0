@@ -1,4 +1,4 @@
-name: V0 Validation Clean Run
+name: V0 Validation Resumable
 
 on:
   workflow_dispatch: {}
@@ -6,7 +6,7 @@ on:
 jobs:
   run-v0:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 95
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -37,6 +37,7 @@ jobs:
           name: v0-checkpoints
           path: v0_flat/results/checkpoints
           if_no_artifact_found: warn
+          workflow_conclusion: success
 
       - name: Verify runner
         working-directory: v0_flat
@@ -49,15 +50,15 @@ jobs:
         working-directory: v0_flat
         run: |
           set +e
-          timeout --signal=SIGTERM --kill-after=60s 20400s python3 -u run_v0_parallel.py --workers 2
+          timeout --signal=SIGTERM --kill-after=60s 5400s python3 -u run_v0_parallel.py --workers 2
           code=$?
           echo "V0 exit code: $code"
-          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then
+          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ] && [ "$code" -ne 143 ]; then
             echo 'V0 failed.'
             exit "$code"
           fi
-          if [ "$code" -eq 124 ]; then
-            echo 'Time limit reached; checkpoints will be uploaded.'
+          if [ "$code" -eq 124 ] || [ "$code" -eq 143 ]; then
+            echo 'Chunk time limit reached; checkpoints will be uploaded.'
           else
             echo 'V0 completed normally.'
           fi
@@ -66,10 +67,12 @@ jobs:
         if: always()
         working-directory: v0_flat
         run: |
-          echo '=== Files ==='
-          find results -maxdepth 3 -type f -print 2>/dev/null | sort || true
+          echo '=== Checkpoint files ==='
+          find results/checkpoints -type f -name '*.json' -print 2>/dev/null | sort || true
           echo '=== Checkpoint count ==='
           find results/checkpoints -type f -name '*.json' 2>/dev/null | wc -l || true
+          echo '=== Report ==='
+          test -f results/v0_report_parallel.json && cat results/v0_report_parallel.json || true
 
       - name: Upload checkpoints
         if: always()
@@ -94,5 +97,4 @@ jobs:
       - name: Continuation note
         if: always()
         run: |
-          echo 'This workflow resumes from uploaded checkpoints on the next manual run.'
-          echo 'Automatic self-dispatch is intentionally not enabled because the workflow token cannot be assumed to have Actions write permission.'
+          echo 'V0 is intentionally resumable. Start this workflow again to continue from checkpoints.'
