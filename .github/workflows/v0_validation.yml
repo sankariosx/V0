@@ -1,6 +1,8 @@
 name: V0 Validation Resumable
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch: {}
 
 jobs:
@@ -97,4 +99,4 @@ jobs:
       - name: Continuation note
         if: always()
         run: |
-          echo 'V0 is intentionally resumable. Start this workflow again to continue from checkpoints.'
+          echo 'V0 is intentionally resumable. Each run processes another bounded chunk from checkpoints.'
