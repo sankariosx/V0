@@ -5,6 +5,12 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+# Only one validation run may operate on the resumable checkpoint artifact at a time.
+# A newer main-branch commit cancels the older run before it can race on checkpoints.
+concurrency:
+  group: v0-validation-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   run-v0:
     runs-on: ubuntu-latest
@@ -41,11 +47,15 @@ jobs:
           if_no_artifact_found: warn
           workflow_conclusion: success
 
+      - name: Guard checkpoint versions
+        working-directory: v0_flat
+        run: python3 checkpoint_guard.py guard
+
       - name: Verify runner
         working-directory: v0_flat
         run: |
           python3 --version
-          python3 -m py_compile run_v0_parallel.py parallel_runner.py config_final.py
+          python3 -m py_compile run_v0_parallel.py parallel_runner.py config_final.py checkpoint_guard.py
           echo 'V0 runner verification passed.'
 
       - name: Run V0 validation chunk
@@ -64,6 +74,11 @@ jobs:
           else
             echo 'V0 completed normally.'
           fi
+
+      - name: Stamp checkpoint versions before upload
+        if: always()
+        working-directory: v0_flat
+        run: python3 checkpoint_guard.py stamp
 
       - name: Show results
         if: always()
