@@ -14,7 +14,7 @@ concurrency:
 jobs:
   run-v0:
     runs-on: ubuntu-latest
-    timeout-minutes: 95
+    timeout-minutes: 350
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -62,7 +62,9 @@ jobs:
         working-directory: v0_flat
         run: |
           set +e
-          timeout --signal=SIGTERM --kill-after=60s 5400s python3 -u run_v0_parallel.py --workers 2
+          # Allow V0 to use nearly the full GitHub Actions job window.
+          # Keep a safety margin for checkpoint stamping, reporting and upload.
+          timeout --signal=SIGTERM --kill-after=60s 330m python3 -u run_v0_parallel.py --workers 2
           code=$?
           echo "V0 exit code: $code"
           if [ "$code" -ne 0 ] && [ "$code" -ne 124 ] && [ "$code" -ne 143 ]; then
