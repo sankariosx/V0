@@ -15,7 +15,6 @@ class SimpleEBM:
     """
     Drop-in replacement for your old SimpleEBM but using REAL ExplainableBoostingRegressor.
     Keeps same public API: fit, get_top_features, get_top_interactions, generate_candidate_hypotheses
-    Keeps purification/bootstrap/BH/FDR/TOP50/MAX75 logic in other files UNCHANGED.
     """
     def __init__(self, outer_bags=25, bag_frac=0.8, boost_rounds=120, max_depth=3, top_features_for_pairs=50, max_interactions=75, seed=None):
         if not EBM_AVAILABLE:
@@ -45,7 +44,7 @@ class SimpleEBM:
         if isinstance(X, pd.DataFrame):
             self.feature_names_ = list(X.columns)
             X_np = X.values
-            X_for_ebm = X  # keep DataFrame so term_names_ are real names
+            X_for_ebm = X
         else:
             self.feature_names_ = [f"f{i}" for i in range(X.shape[1])]
             X_np = np.asarray(X)
@@ -53,18 +52,18 @@ class SimpleEBM:
         y_np = np.asarray(y)
         n, p = X_np.shape
 
-        # --- REAL EBM FIT ---
-        # V0 spec: outer_bags=25, learning_rate=0.01, max_leaves=3, FAST interactions
+        # Use the configured interaction budget. The previous code accidentally
+        # used top_features_for_pairs (50) and ignored MAX_INTERACTIONS (75).
+        interaction_search = min(int(self.max_interactions), max(0, p * (p - 1) // 2))
         self._ebm_model = ExplainableBoostingRegressor(
             outer_bags=self.outer_bags,
             learning_rate=0.01,
             max_leaves=self.max_depth,
-            interactions=self.top_features_for_pairs,  # how many interactions to search
+            interactions=interaction_search,
             random_state=self.seed if self.seed is not None else 42
         )
         self._ebm_model.fit(X_for_ebm, y_np)
 
-        # Fix for interpret 0.4.4 bug: term_importances_ vs term_importances
         if hasattr(self._ebm_model, 'term_importances_'):
             term_importances = self._ebm_model.term_importances_
         elif hasattr(self._ebm_model, 'term_importances'):
@@ -76,10 +75,8 @@ class SimpleEBM:
         if term_names is None:
             term_names = getattr(self._ebm_model, 'feature_names_in_', self.feature_names_)
 
-        # Build feature_importances_ and interaction_importances_ from REAL EBM
         feat_imp = np.zeros(p)
         inter_accum = {}
-        # term_names can be like 'f0', 'f1', 'f0 x f1', or real column names
         for t_idx, t_name in enumerate(term_names):
             imp = float(term_importances[t_idx]) if t_idx < len(term_importances) else 0.0
             if isinstance(t_name, str) and " x " in t_name:
@@ -93,7 +90,6 @@ class SimpleEBM:
                     except ValueError:
                         continue
             else:
-                # single feature
                 try:
                     if isinstance(t_name, str):
                         idx = self.feature_names_.index(t_name)
@@ -101,21 +97,18 @@ class SimpleEBM:
                         idx = int(t_name) if str(t_name).startswith("f") else self.feature_names_.index(str(t_name))
                     feat_imp[idx] += imp
                 except Exception:
-                    # fallback: if term_names are like f0, f1...
                     if isinstance(t_name, str) and t_name.startswith("f"):
                         try:
                             idx = int(t_name[1:])
                             if 0 <= idx < p:
                                 feat_imp[idx] += imp
-                        except:
+                        except Exception:
                             pass
 
         self.feature_importances_ = feat_imp
         self.interaction_importances_ = inter_accum
-        # purified score = same as interaction importance from real EBM (variance of shape function)
         self.interaction_scores_purified_ = {k: v for k, v in inter_accum.items()}
 
-        # Build bags_ for stability check (same as old logic, but without trees)
         self.bags_ = []
         for bag in range(self.outer_bags):
             indices = rng.choice(n, size=int(n*self.bag_frac), replace=False)
@@ -123,7 +116,6 @@ class SimpleEBM:
 
         return self
 
-    # --- KEEP YOUR CANDIDATE LOGIC EXACTLY AS BEFORE - DO NOT CHANGE THRESHOLDS ---
     def get_top_features(self, k=12):
         idx = np.argsort(self.feature_importances_)[-k:][::-1]
         return [(self.feature_names_[i], self.feature_importances_[i], i) for i in idx]
@@ -162,12 +154,7 @@ class SimpleEBM:
                 stability = stable / len(self.bags_) if self.bags_ else 1.0
                 if stability < 0.6:
                     continue
-                candidates.append({
-                    "type":"1way", "features":[fname], "feature_indices":[fi], "thresholds":[thresh],
-                    "quantile":q, "condition_str":f"{fname} {'<' if q<0.5 else '>'} {thresh:.4f} ({int(q*100)}th)",
-                    "n_samples":int(n_cond), "effect_size":float(effect), "stability":float(stability),
-                    "importance":float(imp), "condition_mask":cond
-                })
+                candidates.append({"type":"1way", "features":[fname], "feature_indices":[fi], "thresholds":[thresh], "quantile":q, "condition_str":f"{fname} {'<' if q<0.5 else '>'} {thresh:.4f} ({int(q*100)}th)", "n_samples":int(n_cond), "effect_size":float(effect), "stability":float(stability), "importance":float(imp), "condition_mask":cond})
         candidates.sort(key=lambda x: abs(x["effect_size"])*x["stability"], reverse=True)
         return candidates[:max_candidates]
 
@@ -204,16 +191,11 @@ class SimpleEBM:
                 if stability < 0.6:
                     continue
                 fname1 = self.feature_names_[fi]; fname2 = self.feature_names_[fj]
-                candidates.append({
-                    "type":"2way", "features":[fname1,fname2], "feature_indices":[fi,fj],
-                    "thresholds":[t1,t2], "quantiles":[q1,q2],
-                    "condition_str":f"{fname1} {'<' if q1<0.5 else '>'} {t1:.3f} AND {fname2} {'<' if q2<0.5 else '>'} {t2:.3f}",
-                    "n_samples":int(n_cond), "effect_size":float(effect), "stability":float(stability),
-                    "importance":float(score), "condition_mask":cond
-                })
-                if len(candidates) >= max_candidates:
-                    return candidates
-        return candidates
+                candidates.append({"type":"2way", "features":[fname1,fname2], "feature_indices":[fi,fj], "thresholds":[t1,t2], "quantiles":[q1,q2], "condition_str":f"{fname1} {'<' if q1<0.5 else '>'} {t1:.3f} AND {fname2} {'<' if q2<0.5 else '>'} {t2:.3f}", "n_samples":int(n_cond), "effect_size":float(effect), "stability":float(stability), "importance":float(score), "condition_mask":cond})
+        # Evaluate all searched pairs before truncating. Returning early when the
+        # first max_candidates are found can crowd out a genuine weak interaction.
+        candidates.sort(key=lambda x: abs(x["effect_size"])*x["stability"], reverse=True)
+        return candidates[:max_candidates]
 
     def generate_candidate_hypotheses(self, X, y, min_samples=500, effect_thresh=0.12, max_candidates=50):
         X_np = X.values if isinstance(X, pd.DataFrame) else np.asarray(X)
