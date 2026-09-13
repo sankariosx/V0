@@ -2,7 +2,9 @@ from pathlib import Path
 BASE_DIR = Path(__file__).parent
 RESULTS_DIR = BASE_DIR / "results"
 LEDGER_PATH = BASE_DIR / "ledger.jsonl"
-N_BARS = 60000
+
+# --- ATTEMPT #1 FIX - RESTORE ORIGINAL V0 SPEC ---
+N_BARS = 25000  # was 60000 - restore to 25000 for Attempt #1, so it fits in GitHub time limit
 INITIAL_PRICE = 2000.0
 GARCH_OMEGA = 1e-6
 GARCH_ALPHA = 0.08
@@ -17,10 +19,14 @@ PURGE_GAP_BARS = 16
 BLOCK_LENGTH = 64
 FEATURE_VERSION = "v1.1"
 VALIDATION_VERSION = "v2.1-block-wild-null"
+
+# Real EBM config - MUST be real EBM, no fallback
 OUTER_BAGS = 25
 BAG_SAMPLE_FRAC = 0.8
 BOOST_ROUNDS = 120
 TREE_MAX_DEPTH = 3
+REQUIRE_REAL_EBM = True  # <-- ADD THIS - fail loudly if interpret missing
+
 TOP_FEATURES_FOR_PAIRS = 50
 MAX_INTERACTIONS = 75
 MIN_SAMPLES_FOR_EDGE = 500
@@ -30,13 +36,16 @@ ALPHA_SCREEN = 0.05
 ALPHA_FINAL = 0.05
 FDR_Q = 0.05
 HYPOTHESIS_BUDGET = 200
-TEST_A_N_MARKETS = 30
+
+# --- RESTORED SAMPLE SIZES ---
+TEST_A_N_MARKETS = 50  # was 30 -> must be 50
 TEST_B_EFFECT_SIZES = [0.1, 0.2, 0.3, 0.5]
 TEST_B_N_MARKETS_PER_SIZE = 10
 TEST_C_N_MARKETS = 20
 TEST_C_N_FEATURES = 120
+
 MAX_FPR_TEST_A = 0.05
-MAX_FPR_TEST_C = 0.10
+MAX_FPR_TEST_C = 0.05  # was 0.10 -> must be 0.05 per locked verdict
 MIN_POWER_1WAY_03 = 0.80
 MIN_POWER_2WAY_03 = 0.70
 MAX_POWER_3WAY_EXPECTED = 0.30
