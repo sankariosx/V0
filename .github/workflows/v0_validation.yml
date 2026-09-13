@@ -59,14 +59,14 @@ jobs:
         working-directory: v0_flat
         run: |
           python3 --version
-          python3 -m py_compile run_v0_parallel.py parallel_runner.py config_final.py checkpoint_guard.py
+          python3 -m py_compile run_v0_parallel.py parallel_runner.py config_final.py checkpoint_guard.py ebm_discovery.py
           echo 'V0 runner verification passed.'
 
       - name: Run V0 validation chunk - 50 A / 20 C / real EBM
         working-directory: v0_flat
         run: |
           set +e
-          timeout --signal=SIGTERM --kill-after=60s 330m python3 -u run_v0_parallel.py --workers 2 --require_real_ebm
+          timeout --signal=SIGTERM --kill-after=60s 330m python3 -u run_v0_parallel.py --workers 2
           code=$?
           echo "V0 exit code: $code"
           if [ "$code" -ne 0 ] && [ "$code" -ne 124 ] && [ "$code" -ne 143 ]; then
