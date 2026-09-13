@@ -5,8 +5,6 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
-# Only one validation run may operate on the resumable checkpoint artifact at a time.
-# A newer main-branch commit cancels the older run before it can race on checkpoints.
 concurrency:
   group: v0-validation-${{ github.ref }}
   cancel-in-progress: true
@@ -19,15 +17,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.10 - REQUIRED for interpret
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Install dependencies - PINNED for real EBM
         run: |
           python -m pip install --upgrade pip
-          pip install numpy pandas scikit-learn
+          pip install interpret==0.4.4 scikit-learn==1.3.2 pandas==2.1.4 numpy==1.26.2 scipy==1.11.4
+          pip list | grep -E "interpret|scikit-learn|pandas|numpy|scipy"
+
+      - name: Verify REAL EBM - FAIL LOUDLY if missing - no fallback
+        run: |
+          python -c "from interpret.glassbox import ExplainableBoostingRegressor; print('EBM OK - real EBM available')"
+          python --version
 
       - name: Show exact commit
         run: |
@@ -58,13 +62,11 @@ jobs:
           python3 -m py_compile run_v0_parallel.py parallel_runner.py config_final.py checkpoint_guard.py
           echo 'V0 runner verification passed.'
 
-      - name: Run V0 validation chunk
+      - name: Run V0 validation chunk - 50 A / 20 C / real EBM
         working-directory: v0_flat
         run: |
           set +e
-          # Allow V0 to use nearly the full GitHub Actions job window.
-          # Keep a safety margin for checkpoint stamping, reporting and upload.
-          timeout --signal=SIGTERM --kill-after=60s 330m python3 -u run_v0_parallel.py --workers 2
+          timeout --signal=SIGTERM --kill-after=60s 330m python3 -u run_v0_parallel.py --workers 2 --require_real_ebm
           code=$?
           echo "V0 exit code: $code"
           if [ "$code" -ne 0 ] && [ "$code" -ne 124 ] && [ "$code" -ne 143 ]; then
