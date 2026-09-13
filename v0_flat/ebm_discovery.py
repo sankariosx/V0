@@ -16,6 +16,9 @@ class SimpleEBM:
         self.feature_importances_ = None
         self.interaction_importances_ = None
         self.interaction_scores_purified_ = None
+        # Directional scores keep "feature A high + feature B low" distinct
+        # from the other three possible two-feature regions.
+        self.interaction_direction_scores_ = None
 
     def fit(self, X, y):
         rng = np.random.default_rng(self.seed)
@@ -57,7 +60,10 @@ class SimpleEBM:
                 for b in range(a+1, len(top_idx)):
                     i = top_idx[a]
                     j = top_idx[b]
-                    for qi,qj in [(0.8,0.2),(0.2,0.8)]:
+                    # Score every directional region separately. Averaging these
+                    # directions together can hide a real interaction that is
+                    # present only in one region.
+                    for qi,qj in [(0.8,0.2),(0.2,0.8),(0.8,0.8),(0.2,0.2)]:
                         col_i = X_b[:, i]
                         col_j = X_b[:, j]
                         thresh_i = np.quantile(col_i, qi)
@@ -110,12 +116,21 @@ class SimpleEBM:
             })
         self.feature_importances_ = feat_imp_accum / self.outer_bags
         self.interaction_importances_ = {k: v/self.outer_bags for k,v in inter_accum.items()}
-        all_pair_scores = {}
+        # Keep a score for each pair *and direction*. A pair-level average can
+        # dilute a strong high/low interaction with its non-signal directions.
+        all_direction_scores = {}
         for bag in self.bags_:
             for (i,j,qi,qj,ti,tj), score, beta_ij, n_ij in bag["pair_scores"]:
-                key = (i,j)
-                all_pair_scores.setdefault(key, []).append(score)
-        self.interaction_scores_purified_ = {k: np.mean(v) for k,v in all_pair_scores.items()}
+                key = (i, j, qi, qj)
+                all_direction_scores.setdefault(key, []).append(score)
+        self.interaction_direction_scores_ = {
+            k: np.mean(v) for k, v in all_direction_scores.items()
+        }
+        # Retain pair-level scores for the existing top-interactions display.
+        pair_best = {}
+        for (i, j, qi, qj), score in self.interaction_direction_scores_.items():
+            pair_best[(i, j)] = max(pair_best.get((i, j), float("-inf")), score)
+        self.interaction_scores_purified_ = pair_best
         return self
 
     def get_top_features(self, k=12):
@@ -167,49 +182,51 @@ class SimpleEBM:
 
     def _generate_twoway(self, X_np, y_np, min_samples, effect_thresh, max_candidates):
         candidates = []
-        if not self.interaction_scores_purified_:
+        if not self.interaction_direction_scores_:
             return candidates
-        # Interaction discovery must not be starved by one-way hypotheses.
-        # Pairs are ranked by their purified interaction score, then evaluated
-        # independently of the one-way candidate ranking.
-        sorted_pairs = sorted(self.interaction_scores_purified_.items(), key=lambda x: x[1], reverse=True)
-        for (fi,fj), score in sorted_pairs:
+        # Rank the actual directional regions. This avoids diluting an
+        # interaction that exists only in (for example) high/low territory.
+        sorted_directions = sorted(
+            self.interaction_direction_scores_.items(),
+            key=lambda x: x[1],
+            reverse=True,
+        )
+        for (fi, fj, q1, q2), score in sorted_directions:
             col1 = X_np[:, fi]; col2 = X_np[:, fj]
-            for q1,q2 in [(0.8,0.2),(0.2,0.8),(0.8,0.8),(0.2,0.2)]:
-                t1 = np.quantile(col1, q1); t2 = np.quantile(col2, q2)
-                c1 = col1 < t1 if q1<0.5 else col1 > t1
-                c2 = col2 < t2 if q2<0.5 else col2 > t2
-                cond = c1 & c2
-                n_cond = cond.sum()
-                if n_cond < min_samples:
+            t1 = np.quantile(col1, q1); t2 = np.quantile(col2, q2)
+            c1 = col1 < t1 if q1 < 0.5 else col1 > t1
+            c2 = col2 < t2 if q2 < 0.5 else col2 > t2
+            cond = c1 & c2
+            n_cond = cond.sum()
+            if n_cond < min_samples:
+                continue
+            effect = np.mean(y_np[cond]) - np.mean(y_np)
+            if abs(effect) < effect_thresh:
+                continue
+            stable = 0
+            for bag in self.bags_:
+                idx = bag["indices"]
+                col1_b = X_np[idx, fi]; col2_b = X_np[idx, fj]; y_b = y_np[idx]
+                c1_b = col1_b < t1 if q1 < 0.5 else col1_b > t1
+                c2_b = col2_b < t2 if q2 < 0.5 else col2_b > t2
+                cond_b = c1_b & c2_b
+                if cond_b.sum() < 30:
                     continue
-                effect = np.mean(y_np[cond]) - np.mean(y_np)
-                if abs(effect) < effect_thresh:
-                    continue
-                stable = 0
-                for bag in self.bags_:
-                    idx = bag["indices"]
-                    col1_b = X_np[idx, fi]; col2_b = X_np[idx, fj]; y_b = y_np[idx]
-                    c1_b = col1_b < t1 if q1<0.5 else col1_b > t1
-                    c2_b = col2_b < t2 if q2<0.5 else col2_b > t2
-                    cond_b = c1_b & c2_b
-                    if cond_b.sum() < 30:
-                        continue
-                    if np.sign(np.mean(y_b[cond_b]) - np.mean(y_b)) == np.sign(effect):
-                        stable += 1
-                stability = stable / len(self.bags_)
-                if stability < 0.6:
-                    continue
-                fname1 = self.feature_names_[fi]; fname2 = self.feature_names_[fj]
-                candidates.append({
-                    "type":"2way", "features":[fname1,fname2], "feature_indices":[fi,fj],
-                    "thresholds":[t1,t2], "quantiles":[q1,q2],
-                    "condition_str":f"{fname1} {'<' if q1<0.5 else '>'} {t1:.3f} AND {fname2} {'<' if q2<0.5 else '>'} {t2:.3f}",
-                    "n_samples":int(n_cond), "effect_size":float(effect), "stability":float(stability),
-                    "importance":float(score), "condition_mask":cond
-                })
-                if len(candidates) >= max_candidates:
-                    return candidates
+                if np.sign(np.mean(y_b[cond_b]) - np.mean(y_b)) == np.sign(effect):
+                    stable += 1
+            stability = stable / len(self.bags_)
+            if stability < 0.6:
+                continue
+            fname1 = self.feature_names_[fi]; fname2 = self.feature_names_[fj]
+            candidates.append({
+                "type":"2way", "features":[fname1,fname2], "feature_indices":[fi,fj],
+                "thresholds":[t1,t2], "quantiles":[q1,q2],
+                "condition_str":f"{fname1} {'<' if q1<0.5 else '>'} {t1:.3f} AND {fname2} {'<' if q2<0.5 else '>'} {t2:.3f}",
+                "n_samples":int(n_cond), "effect_size":float(effect), "stability":float(stability),
+                "importance":float(score), "condition_mask":cond
+            })
+            if len(candidates) >= max_candidates:
+                return candidates
         return candidates
 
     def generate_candidate_hypotheses(self, X, y, min_samples=500, effect_thresh=0.12, max_candidates=50):

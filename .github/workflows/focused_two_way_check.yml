@@ -1,0 +1,37 @@
+name: Focused V0 Two-Way Repair Check
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  focused-two-way-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy pandas scikit-learn
+
+      - name: Run four-case two-way repair check
+        working-directory: v0_flat
+        env:
+          PYTHONHASHSEED: "0"
+        run: python -u run_focused_two_way_check.py
+
+      - name: Upload focused report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focused-two-way-report
+          path: v0_flat/results/focused_two_way_check.json
+          if-no-files-found: error
+          retention-days: 30
