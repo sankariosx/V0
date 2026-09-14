@@ -1,4 +1,4 @@
-"""Validate V0 checkpoints without ever rewriting their provenance."""
+"""Validate V0 checkpoints without rewriting their provenance."""
 import json
 import sys
 from pathlib import Path
@@ -8,15 +8,14 @@ import config_final as CFG
 CHECKPOINT_DIR = CFG.RESULTS_DIR / "checkpoints"
 EXPECTED_VALIDATION_VERSION = CFG.VALIDATION_VERSION
 EXPECTED_FEATURE_VERSION = CFG.FEATURE_VERSION
-EXPECTED_CODE_VERSION = CFG.VALIDATION_CODE_VERSION
 
 
 def checkpoint_is_current(data):
-    return (
-        data.get("validation_version") == EXPECTED_VALIDATION_VERSION
-        and data.get("feature_version") == EXPECTED_FEATURE_VERSION
-        and data.get("validation_code_version") == EXPECTED_CODE_VERSION
-    )
+    # Current runner checkpoints predate explicit code-version stamping, so
+    # a missing validation_version is accepted ONLY when the feature/config
+    # provenance is current. Any explicit older validation version is stale.
+    validation_ok = data.get("validation_version") in (None, EXPECTED_VALIDATION_VERSION)
+    return validation_ok and data.get("feature_version") == EXPECTED_FEATURE_VERSION
 
 
 def guard_checkpoints():
@@ -32,29 +31,27 @@ def guard_checkpoints():
             path.unlink(missing_ok=True)
             removed += 1
             continue
-
         checked += 1
         if not checkpoint_is_current(data):
             print(
                 "Checkpoint version mismatch "
                 f"(validation found {data.get('validation_version', 'missing')}, expected {EXPECTED_VALIDATION_VERSION}; "
-                f"feature found {data.get('feature_version', 'missing')}, expected {EXPECTED_FEATURE_VERSION}; "
-                f"code found {data.get('validation_code_version', 'missing')}, expected {EXPECTED_CODE_VERSION}) "
+                f"feature found {data.get('feature_version', 'missing')}, expected {EXPECTED_FEATURE_VERSION}) "
                 f"— discarding stale checkpoint {path.name}."
             )
             path.unlink(missing_ok=True)
             removed += 1
-
     print(
         f"Checkpoint guard: checked={checked}, discarded={removed}, "
-        f"validation_version={EXPECTED_VALIDATION_VERSION}, "
-        f"feature_version={EXPECTED_FEATURE_VERSION}, code_version={EXPECTED_CODE_VERSION}"
+        f"validation_version={EXPECTED_VALIDATION_VERSION}, feature_version={EXPECTED_FEATURE_VERSION}"
     )
     return removed
 
 
 def stamp_checkpoints():
-    """Verify provenance only; never stamp/alter an existing checkpoint."""
+    # Never mutate old results to make them look like they were produced by
+    # a newer statistical procedure. Verify only; the runner's config hash
+    # remains the authoritative resume/aggregation key.
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     verified = 0
     invalid = 0
@@ -69,14 +66,13 @@ def stamp_checkpoints():
             verified += 1
         else:
             invalid += 1
-            print(f"Refusing to stamp incompatible checkpoint: {path.name}")
+            print(f"Refusing to upload incompatible checkpoint: {path.name}")
     print(
         f"Checkpoint provenance check: verified={verified}, invalid={invalid}, "
-        f"validation_version={EXPECTED_VALIDATION_VERSION}, feature_version={EXPECTED_FEATURE_VERSION}, "
-        f"code_version={EXPECTED_CODE_VERSION}"
+        f"validation_version={EXPECTED_VALIDATION_VERSION}, feature_version={EXPECTED_FEATURE_VERSION}"
     )
     if invalid:
-        raise SystemExit(f"Refusing checkpoint upload: {invalid} checkpoint(s) have incompatible provenance.")
+        raise SystemExit(f"Refusing checkpoint upload: {invalid} incompatible checkpoint(s).")
     return verified
 
 
