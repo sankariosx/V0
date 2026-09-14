@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+  actions: write
+
 concurrency:
   group: v0-validation-${{ github.ref }}
   cancel-in-progress: true
@@ -62,7 +66,8 @@ jobs:
           python3 -m py_compile run_v0_parallel.py parallel_runner.py config_final.py checkpoint_guard.py ebm_discovery.py
           echo 'V0 runner verification passed.'
 
-      - name: Run V0 validation chunk - 50 A / 20 C / real EBM
+      - name: Run V0 validation chunk - 170-job locked validation
+        id: run_chunk
         working-directory: v0_flat
         run: |
           set +e
@@ -71,12 +76,15 @@ jobs:
           echo "V0 exit code: $code"
           if [ "$code" -ne 0 ] && [ "$code" -ne 124 ] && [ "$code" -ne 143 ]; then
             echo 'V0 failed.'
+            echo 'continue=false' >> "$GITHUB_OUTPUT"
             exit "$code"
           fi
           if [ "$code" -eq 124 ] || [ "$code" -eq 143 ]; then
-            echo 'Chunk time limit reached; checkpoints will be uploaded.'
+            echo 'Chunk time limit reached; checkpoints will be uploaded and this workflow run will be resumed automatically.'
+            echo 'continue=true' >> "$GITHUB_OUTPUT"
           else
             echo 'V0 completed normally.'
+            echo 'continue=false' >> "$GITHUB_OUTPUT"
           fi
 
       - name: Stamp checkpoint versions before upload
@@ -115,7 +123,33 @@ jobs:
           if-no-files-found: ignore
           overwrite: true
 
-      - name: Continuation note
+      - name: Automatically resume after time limit
+        if: always() && steps.run_chunk.outputs.continue == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo 'Chunk timed out normally. Triggering the next resumable run now...'
+          for attempt in 1 2 3; do
+            if curl --fail --silent --show-error \
+              -X POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/rerun"; then
+              echo "Automatic continuation triggered successfully (attempt $attempt)."
+              exit 0
+            fi
+            echo "Continuation trigger attempt $attempt failed; retrying in 10 seconds..."
+            sleep 10
+          done
+          echo 'Could not trigger automatic continuation after 3 attempts.'
+          exit 1
+
+      - name: Continuation status
         if: always()
         run: |
-          echo 'V0 is intentionally resumable. Each run processes another bounded chunk from checkpoints.'
+          if [ "${{ steps.run_chunk.outputs.continue }}" = 'true' ]; then
+            echo 'V0 chunk ended at the time limit; automatic resumable continuation was requested.'
+          else
+            echo 'No automatic continuation required.'
+          fi
