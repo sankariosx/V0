@@ -19,6 +19,9 @@ PURGE_GAP_BARS = 16
 BLOCK_LENGTH = 64
 FEATURE_VERSION = "v1.1"
 VALIDATION_VERSION = "v2.1-block-wild-null"
+# Changes to the statistical procedure must change this value so old
+# checkpoints can never be reused by a new validation implementation.
+VALIDATION_CODE_VERSION = "v2.2-purified-pair-rescore"
 
 # Real EBM config - MUST be real EBM, no fallback
 OUTER_BAGS = 25
