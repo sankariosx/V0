@@ -1,0 +1,53 @@
+name: V0 Auto Resume
+
+on:
+  workflow_run:
+    workflows: ["V0 Validation Resumable"]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  resume:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect completed V0 run
+        id: inspect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo "Inspecting V0 run ${RUN_ID}"
+          RUN_JSON=$(gh api "repos/${REPOSITORY}/actions/runs/${RUN_ID}")
+          HEAD_SHA=$(printf '%s' "$RUN_JSON" | python -c 'import json,sys; print(json.load(sys.stdin)["head_sha"])')
+          echo "head_sha=${HEAD_SHA}"
+
+          COUNT=$(gh api --paginate "repos/${REPOSITORY}/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | select(..name == "v0-checkpoints" and .workflow_run.id == '${RUN_ID}' and .expired == false) | .id' \
+            | wc -l)
+          echo "checkpoint_artifacts_for_run=${COUNT}"
+
+          JOBS=$(gh api "repos/${REPOSITORY}/actions/runs/${RUN_ID}/jobs?per_page=100" --jq '.jobs | length')
+          echo "jobs_in_run=${JOBS}"
+
+          if [ "${{ github.event.workflow_run.conclusion }}" = "success" ]; then
+            echo "The V0 run completed successfully; the main workflow decides whether all 170 jobs are complete."
+          else
+            echo "The V0 run ended with conclusion: ${{ github.event.workflow_run.conclusion }}"
+          fi
+
+          echo "resume=true" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch next V0 chunk
+        if: steps.inspect.outputs.resume == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo 'Dispatching a fresh V0 Validation Resumable run.'
+          gh workflow run "V0 Validation Resumable" --repo "$REPOSITORY"
