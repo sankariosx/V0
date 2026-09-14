@@ -11,11 +11,14 @@ EXPECTED_FEATURE_VERSION = CFG.FEATURE_VERSION
 
 
 def checkpoint_is_current(data):
-    # Current runner checkpoints predate explicit code-version stamping, so
-    # a missing validation_version is accepted ONLY when the feature/config
-    # provenance is current. Any explicit older validation version is stale.
-    validation_ok = data.get("validation_version") in (None, EXPECTED_VALIDATION_VERSION)
-    return validation_ok and data.get("feature_version") == EXPECTED_FEATURE_VERSION
+    # Legacy checkpoints from the current runner may predate explicit
+    # provenance fields. They are accepted only when BOTH version fields are
+    # absent. Any explicit version must match the current locked versions.
+    validation = data.get("validation_version")
+    feature = data.get("feature_version")
+    if validation is None and feature is None:
+        return True
+    return validation == EXPECTED_VALIDATION_VERSION and feature == EXPECTED_FEATURE_VERSION
 
 
 def guard_checkpoints():
@@ -49,9 +52,8 @@ def guard_checkpoints():
 
 
 def stamp_checkpoints():
-    # Never mutate old results to make them look like they were produced by
-    # a newer statistical procedure. Verify only; the runner's config hash
-    # remains the authoritative resume/aggregation key.
+    # Verify only. Never rewrite old results to make them appear to have been
+    # produced by a newer statistical procedure.
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     verified = 0
     invalid = 0
