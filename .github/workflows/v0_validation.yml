@@ -87,6 +87,7 @@ jobs:
           fi
 
       - name: Verify checkpoint provenance before upload
+        id: stamp
         if: always()
         working-directory: v0_flat
         run: python3 checkpoint_guard.py stamp
@@ -103,7 +104,7 @@ jobs:
           test -f results/v0_report_parallel.json && cat results/v0_report_parallel.json || true
 
       - name: Upload checkpoints
-        if: always()
+        if: steps.stamp.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: v0-checkpoints
@@ -123,13 +124,13 @@ jobs:
           overwrite: true
 
       - name: Signal automatic continuation
-        if: steps.run_chunk.outputs.continue == 'true'
+        if: always() && steps.run_chunk.outputs.continue == 'true' && steps.stamp.outcome == 'success'
         run: |
           mkdir -p v0_resume_signal
           echo "resume=true" > v0_resume_signal/resume.txt
 
       - name: Upload continuation signal
-        if: steps.run_chunk.outputs.continue == 'true'
+        if: always() && steps.run_chunk.outputs.continue == 'true' && steps.stamp.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: v0-resume-signal
@@ -139,8 +140,10 @@ jobs:
       - name: Continuation status
         if: always()
         run: |
-          if [ "${{ steps.run_chunk.outputs.continue }}" = 'true' ]; then
-            echo 'V0 chunk ended at the time limit; continuation signal uploaded for the workflow_run handler.'
+          if [ "${{ steps.run_chunk.outputs.continue }}" = 'true' ] && [ "${{ steps.stamp.outcome }}" = 'success' ]; then
+            echo 'V0 chunk ended at the time limit; verified checkpoints and continuation signal uploaded for the workflow_run handler.'
+          elif [ "${{ steps.run_chunk.outputs.continue }}" = 'true' ]; then
+            echo 'V0 chunk ended at the time limit, but checkpoint provenance verification failed; automatic continuation was intentionally blocked.'
           else
             echo 'No automatic continuation required.'
           fi
