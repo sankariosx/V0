@@ -79,7 +79,7 @@ jobs:
             exit "$code"
           fi
           if [ "$code" -eq 124 ] || [ "$code" -eq 143 ]; then
-            echo 'Chunk time limit reached; checkpoints will be uploaded and a separate workflow will resume it.'
+            echo 'Chunk time limit reached; checkpoints will be uploaded and the next chunk will be dispatched directly.'
             echo 'continue=true' >> "$GITHUB_OUTPUT"
           else
             echo 'V0 completed normally.'
@@ -137,11 +137,21 @@ jobs:
           path: v0_resume_signal/resume.txt
           retention-days: 7
 
+      - name: Dispatch next V0 chunk directly
+        if: always() && steps.run_chunk.outputs.continue == 'true' && steps.stamp.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo 'Dispatching the next V0 Validation Resumable chunk directly.'
+          gh workflow run "V0 Validation Resumable" --repo "$REPOSITORY"
+
       - name: Continuation status
         if: always()
         run: |
           if [ "${{ steps.run_chunk.outputs.continue }}" = 'true' ] && [ "${{ steps.stamp.outcome }}" = 'success' ]; then
-            echo 'V0 chunk ended at the time limit; verified checkpoints and continuation signal uploaded for the workflow_run handler.'
+            echo 'V0 chunk ended at the time limit; verified checkpoints uploaded and the next chunk was dispatched directly via workflow_dispatch.'
           elif [ "${{ steps.run_chunk.outputs.continue }}" = 'true' ]; then
             echo 'V0 chunk ended at the time limit, but checkpoint provenance verification failed; automatic continuation was intentionally blocked.'
           else
