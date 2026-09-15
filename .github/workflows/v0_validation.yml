@@ -1,8 +1,6 @@
 name: V0 Validation Resumable
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       resume_from_run_id:
