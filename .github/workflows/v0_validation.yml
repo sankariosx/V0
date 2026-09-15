@@ -3,7 +3,12 @@ name: V0 Validation Resumable
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      resume_from_run_id:
+        description: 'Exact workflow run ID whose v0-checkpoints artifact should be restored'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -42,11 +47,23 @@ jobs:
           echo "GITHUB_SHA=$GITHUB_SHA"
           git rev-parse HEAD
           git log -1 --oneline
+          echo "resume_from_run_id=${{ inputs.resume_from_run_id }}"
 
       - name: Prepare checkpoint directory
         run: mkdir -p v0_flat/results/checkpoints
 
-      - name: Restore previous checkpoints
+      - name: Restore exact parent checkpoints
+        if: inputs.resume_from_run_id != ''
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true
+        with:
+          name: v0-checkpoints
+          path: v0_flat/results/checkpoints
+          run_id: ${{ inputs.resume_from_run_id }}
+          if_no_artifact_found: warn
+
+      - name: Restore latest checkpoints for initial/manual run
+        if: inputs.resume_from_run_id == ''
         uses: dawidd6/action-download-artifact@v6
         continue-on-error: true
         with:
@@ -145,13 +162,14 @@ jobs:
         run: |
           set -euo pipefail
           echo 'Dispatching the next V0 Validation Resumable chunk directly.'
-          gh workflow run "V0 Validation Resumable" --repo "$REPOSITORY"
+          echo "Passing parent run ID: $GITHUB_RUN_ID"
+          gh workflow run "V0 Validation Resumable" --repo "$REPOSITORY" -f resume_from_run_id="$GITHUB_RUN_ID"
 
       - name: Continuation status
         if: always()
         run: |
           if [ "${{ steps.run_chunk.outputs.continue }}" = 'true' ] && [ "${{ steps.stamp.outcome }}" = 'success' ]; then
-            echo 'V0 chunk ended at the time limit; verified checkpoints uploaded and the next chunk was dispatched directly via workflow_dispatch.'
+            echo 'V0 chunk ended at the time limit; verified checkpoints uploaded and the next chunk was dispatched with the exact parent run ID.'
           elif [ "${{ steps.run_chunk.outputs.continue }}" = 'true' ]; then
             echo 'V0 chunk ended at the time limit, but checkpoint provenance verification failed; automatic continuation was intentionally blocked.'
           else
