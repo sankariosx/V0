@@ -1,14 +1,17 @@
 name: V0 Validation Resumable
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       resume_from_run_id:
         description: 'Exact workflow run ID whose v0-checkpoints artifact should be restored'
         required: false
         type: string
+      clean_run:
+        description: 'Start a fresh 170-job validation without restoring old checkpoints'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -48,12 +51,13 @@ jobs:
           git rev-parse HEAD
           git log -1 --oneline
           echo "resume_from_run_id=${{ inputs.resume_from_run_id }}"
+          echo "clean_run=${{ inputs.clean_run }}"
 
       - name: Prepare checkpoint directory
-        run: mkdir -p v0_flat/results/checkpoints
+        run: rm -rf v0_flat/results/checkpoints && mkdir -p v0_flat/results/checkpoints
 
       - name: Restore exact parent checkpoints
-        if: inputs.resume_from_run_id != ''
+        if: inputs.clean_run != true && inputs.resume_from_run_id != ''
         uses: dawidd6/action-download-artifact@v6
         continue-on-error: true
         with:
@@ -63,13 +67,21 @@ jobs:
           if_no_artifact_found: warn
 
       - name: Restore latest checkpoints for initial/manual run
-        if: inputs.resume_from_run_id == ''
+        if: inputs.clean_run != true && inputs.resume_from_run_id == ''
         uses: dawidd6/action-download-artifact@v6
         continue-on-error: true
         with:
           name: v0-checkpoints
           path: v0_flat/results/checkpoints
           if_no_artifact_found: warn
+
+      - name: Confirm clean checkpoint state
+        if: inputs.clean_run == true
+        working-directory: v0_flat
+        run: |
+          count=$(find results/checkpoints -type f -name '*.json' | wc -l)
+          echo "Clean-run checkpoint count: $count"
+          test "$count" -eq 0
 
       - name: Guard checkpoint versions
         working-directory: v0_flat
@@ -113,8 +125,6 @@ jobs:
         if: always()
         working-directory: v0_flat
         run: |
-          echo '=== Checkpoint files ==='
-          find results/checkpoints -type f -name '*.json' -print 2>/dev/null | sort || true
           echo '=== Checkpoint count ==='
           find results/checkpoints -type f -name '*.json' 2>/dev/null | wc -l || true
           echo '=== Report ==='
