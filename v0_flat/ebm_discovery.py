@@ -16,13 +16,10 @@ from purified_interaction_scoring import purified_interaction_score
 class SimpleEBM:
     """Real EBM feature discovery plus explicitly purified pair discovery.
 
-    The EBM is used to rank individual features. Pair candidates are NOT taken
-    from EBM's own interaction importance, because that importance is a model
-    fit statistic and is vulnerable to the same selection noise we are trying
-    to measure. Instead, candidate pairs are rescored on the discovery slice
-    with an OLS interaction term controlling for both component main effects.
-    Final significance is still evaluated only on the untouched validation
-    slice in tests.py.
+    The EBM ranks individual features and also provides a direct interaction
+    recall channel. Pair candidates are then purified on the discovery slice
+    with a main-effect-adjusted interaction coefficient. Final significance is
+    evaluated only on the untouched validation slice in tests.py.
     """
 
     def __init__(self, outer_bags=25, bag_frac=0.8, boost_rounds=120,
@@ -117,30 +114,43 @@ class SimpleEBM:
         self.feature_importances_ = feat_imp
         self.interaction_importances_ = inter_accum
 
-        # IMPORTANT: do not copy EBM interaction importance and call it
-        # "purified".  Explicitly rescore every pair among the EBM-selected
-        # top features using a main-effect-adjusted interaction coefficient.
+        # Pair recall uses TWO independent discovery channels:
+        #   1) all pairs among the top main-effect features (existing channel)
+        #   2) the EBM's selected interaction terms (new recall channel)
+        #
+        # This matters for interaction-only signals: each component can have
+        # weak marginal importance while the pair itself is predictive. The
+        # EBM interaction term is NOT treated as final evidence; every pair is
+        # still rescored by purified_interaction_score on discovery data and
+        # must pass the untouched validation + Holm procedure later.
         top_idx = np.argsort(self.feature_importances_)[-self.top_features_for_pairs:][::-1]
-        purified = {}
-        X_df = X if isinstance(X, pd.DataFrame) else pd.DataFrame(X_np, columns=self.feature_names_)
-        y_series = pd.Series(y_np, index=X_df.index)
+        pair_keys = set()
         for a in range(len(top_idx)):
             for b in range(a + 1, len(top_idx)):
                 i, j = int(top_idx[a]), int(top_idx[b])
-                res = purified_interaction_score(
-                    X_df, y_series, i, j,
-                    qi=0.8, qj=0.2, min_samples=200
-                )
-                res_rev = purified_interaction_score(
-                    X_df, y_series, i, j,
-                    qi=0.2, qj=0.8, min_samples=200
-                )
-                best = None
-                for r in (res, res_rev):
-                    if r is not None and (best is None or abs(r["score"]) > abs(best["score"])):
-                        best = r
-                if best is not None:
-                    purified[(i, j)] = float(abs(best["score"]))
+                pair_keys.add((i, j) if i < j else (j, i))
+
+        for key, _ in sorted(inter_accum.items(), key=lambda x: x[1], reverse=True)[:self.max_interactions]:
+            pair_keys.add(key)
+
+        purified = {}
+        X_df = X if isinstance(X, pd.DataFrame) else pd.DataFrame(X_np, columns=self.feature_names_)
+        y_series = pd.Series(y_np, index=X_df.index)
+        for i, j in sorted(pair_keys):
+            res = purified_interaction_score(
+                X_df, y_series, i, j,
+                qi=0.8, qj=0.2, min_samples=200
+            )
+            res_rev = purified_interaction_score(
+                X_df, y_series, i, j,
+                qi=0.2, qj=0.8, min_samples=200
+            )
+            best = None
+            for r in (res, res_rev):
+                if r is not None and (best is None or abs(r["score"]) > abs(best["score"])):
+                    best = r
+            if best is not None:
+                purified[(i, j)] = float(abs(best["score"]))
         self.interaction_scores_purified_ = purified
 
         # Bootstrap bags are used only for stability of candidate direction;
