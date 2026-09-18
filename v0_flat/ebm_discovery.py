@@ -46,6 +46,58 @@ class SimpleEBM:
         self.interaction_scores_purified_ = {}
         self._ebm_model = None
 
+    def _deduplicate_feature_pool(self, X_df, feature_indices, corr_threshold=0.90):
+        """Cluster highly correlated discovery features and keep one representative.
+
+        This is deliberately done on the DISCOVERY slice only, before any pair
+        combinations are generated. Representatives are chosen by main-effect
+        importance, with feature index as a deterministic tie-breaker.
+        """
+        indices = sorted(set(int(i) for i in feature_indices))
+        if len(indices) < 2:
+            return indices, {i: i for i in indices}, []
+
+        data = X_df.iloc[:, indices].astype(float)
+        corr = data.corr().abs().fillna(0.0)
+        parent = {i: i for i in indices}
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(a, b):
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[rb] = ra
+
+        for a_pos, i in enumerate(indices):
+            for j in indices[a_pos + 1:]:
+                if corr.loc[self.feature_names_[i], self.feature_names_[j]] > corr_threshold:
+                    union(i, j)
+
+        clusters = {}
+        for i in indices:
+            clusters.setdefault(find(i), []).append(i)
+
+        representatives = []
+        mapping = {}
+        cluster_info = []
+        for members in clusters.values():
+            rep = max(members, key=lambda i: (float(self.feature_importances_[i]), -i))
+            representatives.append(rep)
+            for i in members:
+                mapping[i] = rep
+            cluster_info.append({
+                "representative": self.feature_names_[rep],
+                "members": [self.feature_names_[i] for i in members],
+                "size": len(members)
+            })
+
+        representatives.sort(key=lambda i: (-float(self.feature_importances_[i]), i))
+        return representatives, mapping, cluster_info
+
     def fit(self, X, y):
         if not EBM_AVAILABLE:
             raise RuntimeError("REAL EBM REQUIRED - aborting, no fallback")
@@ -115,26 +167,35 @@ class SimpleEBM:
         self.interaction_importances_ = inter_accum
 
         # Pair recall uses TWO independent discovery channels:
-        #   1) all pairs among the top main-effect features (existing channel)
-        #   2) the EBM's selected interaction terms (new recall channel)
+        #   1) all pairs among the top main-effect features
+        #   2) the EBM's selected interaction terms
         #
-        # This matters for interaction-only signals: each component can have
-        # weak marginal importance while the pair itself is predictive. The
-        # EBM interaction term is NOT treated as final evidence; every pair is
-        # still rescored by purified_interaction_score on discovery data and
-        # must pass the untouched validation + Holm procedure later.
+        # IMPORTANT: deduplicate highly correlated features BEFORE generating
+        # pair combinations. Otherwise near-copies (for example atr_100_norm
+        # and an almost identical copy) create redundant hypotheses, inflate
+        # the multiple-testing burden, and can make the same underlying signal
+        # appear many times. Correlation is computed on discovery data only.
         top_idx = np.argsort(self.feature_importances_)[-self.top_features_for_pairs:][::-1]
+        X_df = X if isinstance(X, pd.DataFrame) else pd.DataFrame(X_np, columns=self.feature_names_)
+        pair_pool = list(dict.fromkeys([int(i) for i in top_idx] + [int(i) for key in sorted(inter_accum) for i in key]))
+        dedup_pool, feature_map, dedup_clusters = self._deduplicate_feature_pool(X_df, pair_pool, corr_threshold=0.90)
+        self.dedup_clusters_ = dedup_clusters
+        self.dedup_feature_map_ = feature_map
+
         pair_keys = set()
-        for a in range(len(top_idx)):
-            for b in range(a + 1, len(top_idx)):
-                i, j = int(top_idx[a]), int(top_idx[b])
+        for a in range(len(dedup_pool)):
+            for b in range(a + 1, len(dedup_pool)):
+                i, j = int(dedup_pool[a]), int(dedup_pool[b])
                 pair_keys.add((i, j) if i < j else (j, i))
 
+        # Preserve the EBM interaction-recall channel, but map correlated
+        # members to their representatives and discard self-pairs.
         for key, _ in sorted(inter_accum.items(), key=lambda x: x[1], reverse=True)[:self.max_interactions]:
-            pair_keys.add(key)
+            i, j = feature_map.get(int(key[0]), int(key[0])), feature_map.get(int(key[1]), int(key[1]))
+            if i != j:
+                pair_keys.add((i, j) if i < j else (j, i))
 
         purified = {}
-        X_df = X if isinstance(X, pd.DataFrame) else pd.DataFrame(X_np, columns=self.feature_names_)
         y_series = pd.Series(y_np, index=X_df.index)
         for i, j in sorted(pair_keys):
             res = purified_interaction_score(
@@ -152,6 +213,7 @@ class SimpleEBM:
             if best is not None:
                 purified[(i, j)] = float(abs(best["score"]))
         self.interaction_scores_purified_ = purified
+        print(f"  Correlation dedup: {len(pair_pool)} candidate features -> {len(dedup_pool)} representatives; {len(dedup_clusters)} clusters")
 
         # Bootstrap bags are used only for stability of candidate direction;
         # the validation slice remains completely untouched.
