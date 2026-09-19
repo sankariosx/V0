@@ -189,7 +189,7 @@ class SimpleEBM:
                 i, j = int(dedup_pool[a]), int(dedup_pool[b])
                 pair_keys.add((i, j) if i < j else (j, i))
 
-        self.pair_keys_ = pair_keys
+        self.pair_keys_generated_ = set(pair_keys)
 
         # Preserve the EBM interaction-recall channel, but map correlated
         # members to their representatives and discard self-pairs.
@@ -242,7 +242,7 @@ class SimpleEBM:
         out["dedup_representatives"] = [self.feature_names_[mapped_a], self.feature_names_[mapped_b]]
         out["dedup_survives"] = bool(mapped_a != mapped_b or ia == ib)
         pair = tuple(sorted((int(mapped_a), int(mapped_b)))) if mapped_a != mapped_b else None
-        pair_keys = getattr(self, "pair_keys_", set())
+        pair_keys = getattr(self, "pair_keys_generated_", set())
         out["pair_generated"] = bool(pair is not None and pair in pair_keys)
         scores = getattr(self, "interaction_scores_purified_", {})
         if pair is not None and pair in scores:
@@ -255,6 +255,13 @@ class SimpleEBM:
             out["purified_rank"] = None
             out["purified_pairs_total"] = len(scores)
         if candidates is not None:
+            generated_pair_cands = getattr(self, "last_two_way_candidates_", [])
+            target_generated = None
+            for i, cand in enumerate(generated_pair_cands, 1):
+                fs = set(cand.get("features", []))
+                if fs == {self.feature_names_[mapped_a], self.feature_names_[mapped_b]}:
+                    target_generated = (i, cand)
+                    break
             pair_cands = [x for x in candidates if x.get("type") == "2way"]
             target = None
             for i, cand in enumerate(pair_cands, 1):
@@ -262,6 +269,9 @@ class SimpleEBM:
                 if fs == {self.feature_names_[mapped_a], self.feature_names_[mapped_b]}:
                     target = (i, cand)
                     break
+            out["generated_two_way_candidate_count"] = len(generated_pair_cands)
+            out["generated_two_way_rank"] = target_generated[0] if target_generated else None
+            out["generated_two_way_candidate"] = target_generated[1] if target_generated else None
             out["final_two_way_candidate_count"] = len(pair_cands)
             out["final_candidate_rank"] = target[0] if target else None
             out["final_candidate"] = target[1] if target else None
@@ -355,6 +365,8 @@ class SimpleEBM:
         two_budget = max_candidates - one_budget
         one = self._generate_oneway(X_np, y_np, min_samples, effect_thresh, one_budget)
         two = self._generate_twoway(X_np, y_np, min_samples, effect_thresh, two_budget)
+        self.last_one_way_candidates_ = list(one)
+        self.last_two_way_candidates_ = list(two)
         out = one + two
         out.sort(key=lambda x: abs(x["effect_size"]) * x["stability"], reverse=True)
         return out[:max_candidates]
