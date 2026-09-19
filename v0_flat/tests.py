@@ -88,6 +88,9 @@ def test_B_injected(effect_sizes=TEST_B_EFFECT_SIZES, n_per_size=TEST_B_N_MARKET
                     p_vals=[v["boot_p_value"] for v in validated]
                     reject,_=holm_step_down(p_vals, alpha=MULTIPLE_TEST_ALPHA)
                     surviving=[validated[i] for i in range(len(validated)) if reject[i]]
+                pair_diagnostic=None
+                if effect_type=="2way":
+                    pair_diagnostic=model.diagnose_pair("vol_expansion", "pct_rank_100", candidates)
                 detected=False
                 if len(surviving)>0:
                     for surv in surviving:
@@ -104,7 +107,7 @@ def test_B_injected(effect_sizes=TEST_B_EFFECT_SIZES, n_per_size=TEST_B_N_MARKET
                             has_trend=any("trend_persist" in f for f in feats)
                             if has_vol and has_pct and has_trend: detected=True
                 if detected: detections+=1
-                details.append({"seed":seed,"n_candidates":len(candidates),"n_surviving":len(surviving),"detected":detected,"true_info":injected["info"],"surviving":surviving[:2]})
+                details.append({"seed":seed,"n_candidates":len(candidates),"n_surviving":len(surviving),"detected":detected,"true_info":injected["info"],"surviving":surviving[:2],"pair_diagnostic":pair_diagnostic})
             power=detections/n_per_size
             print(f"    Power at {eff_size}: {detections}/{n_per_size} = {power:.2f}")
             type_results[eff_size]={"power":power,"detections":detections,"details":details}
