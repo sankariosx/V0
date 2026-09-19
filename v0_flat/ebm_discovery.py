@@ -178,6 +178,7 @@ class SimpleEBM:
         top_idx = np.argsort(self.feature_importances_)[-self.top_features_for_pairs:][::-1]
         X_df = X if isinstance(X, pd.DataFrame) else pd.DataFrame(X_np, columns=self.feature_names_)
         pair_pool = list(dict.fromkeys([int(i) for i in top_idx] + [int(i) for key in sorted(inter_accum) for i in key]))
+        self.pair_pool_before_dedup_ = list(pair_pool)
         dedup_pool, feature_map, dedup_clusters = self._deduplicate_feature_pool(X_df, pair_pool, corr_threshold=0.90)
         self.dedup_clusters_ = dedup_clusters
         self.dedup_feature_map_ = feature_map
@@ -188,6 +189,8 @@ class SimpleEBM:
                 i, j = int(dedup_pool[a]), int(dedup_pool[b])
                 pair_keys.add((i, j) if i < j else (j, i))
 
+        self.pair_keys_ = pair_keys
+
         # Preserve the EBM interaction-recall channel, but map correlated
         # members to their representatives and discard self-pairs.
         for key, _ in sorted(inter_accum.items(), key=lambda x: x[1], reverse=True)[:self.max_interactions]:
@@ -195,6 +198,7 @@ class SimpleEBM:
             if i != j:
                 pair_keys.add((i, j) if i < j else (j, i))
 
+        # pair_keys is finalized below after the EBM interaction-recall additions.
         purified = {}
         y_series = pd.Series(y_np, index=X_df.index)
         for i, j in sorted(pair_keys):
@@ -213,6 +217,7 @@ class SimpleEBM:
             if best is not None:
                 purified[(i, j)] = float(abs(best["score"]))
         self.interaction_scores_purified_ = purified
+        self.pair_keys_ = set(purified.keys())
         print(f"  Correlation dedup: {len(pair_pool)} candidate features -> {len(dedup_pool)} representatives; {len(dedup_clusters)} clusters")
 
         # Bootstrap bags are used only for stability of candidate direction;
@@ -222,6 +227,45 @@ class SimpleEBM:
             indices = rng.choice(n, size=int(n * self.bag_frac), replace=False)
             self.bags_.append({"indices": indices})
         return self
+
+    def diagnose_pair(self, feature_a, feature_b, candidates=None):
+        """Trace a named pair through discovery without changing discovery behavior."""
+        names = {name: i for i, name in enumerate(self.feature_names_)}
+        ia, ib = names.get(feature_a), names.get(feature_b)
+        out = {"feature_a": feature_a, "feature_b": feature_b}
+        if ia is None or ib is None:
+            out.update({"initial_top_pool": False, "pair_pool": False, "dedup_survives": False, "pair_generated": False})
+            return out
+        out["initial_top_pool"] = bool(ia in getattr(self, "pair_pool_before_dedup_", []))
+        mapped_a = getattr(self, "dedup_feature_map_", {}).get(ia, ia)
+        mapped_b = getattr(self, "dedup_feature_map_", {}).get(ib, ib)
+        out["dedup_representatives"] = [self.feature_names_[mapped_a], self.feature_names_[mapped_b]]
+        out["dedup_survives"] = bool(mapped_a != mapped_b or ia == ib)
+        pair = tuple(sorted((int(mapped_a), int(mapped_b)))) if mapped_a != mapped_b else None
+        pair_keys = getattr(self, "pair_keys_", set())
+        out["pair_generated"] = bool(pair is not None and pair in pair_keys)
+        scores = getattr(self, "interaction_scores_purified_", {})
+        if pair is not None and pair in scores:
+            ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+            out["purified_score"] = float(scores[pair])
+            out["purified_rank"] = next((i + 1 for i, (k, _) in enumerate(ranked) if k == pair), None)
+            out["purified_pairs_total"] = len(ranked)
+        else:
+            out["purified_score"] = None
+            out["purified_rank"] = None
+            out["purified_pairs_total"] = len(scores)
+        if candidates is not None:
+            pair_cands = [x for x in candidates if x.get("type") == "2way"]
+            target = None
+            for i, cand in enumerate(pair_cands, 1):
+                fs = set(cand.get("features", []))
+                if fs == {self.feature_names_[mapped_a], self.feature_names_[mapped_b]}:
+                    target = (i, cand)
+                    break
+            out["final_two_way_candidate_count"] = len(pair_cands)
+            out["final_candidate_rank"] = target[0] if target else None
+            out["final_candidate"] = target[1] if target else None
+        return out
 
     def get_top_features(self, k=12):
         idx = np.argsort(self.feature_importances_)[-k:][::-1]
