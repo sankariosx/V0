@@ -100,7 +100,7 @@ from generators import (
     verify_no_predictive_signal,
 )
 from features import build_features
-from validation import benjamini_hochberg
+from validation import holm_step_down
 from ledger import clear_ledger, get_ledger_count
 # Import the exact, unmodified helper functions from tests.py so the
 # statistical procedure is guaranteed identical (not re-transcribed).
@@ -202,7 +202,7 @@ def _worker_test_A(job):
     if len(candidates) > 0:
         validated = validate_candidates(feat_val, target_val, candidates, seed=seed)
         p_vals = [v["boot_p_value"] for v in validated]
-        reject, _ = benjamini_hochberg(p_vals, q=CFG.FDR_Q)
+        reject, _ = holm_step_down(p_vals, alpha=CFG.ALPHA_FINAL)
         n_surv = int(reject.sum())
     return {
         "market_idx": i, "seed": seed, "verification": checks,
@@ -224,8 +224,11 @@ def _worker_test_B(job):
     if len(candidates) > 0:
         validated = validate_candidates(feat_val, y_val, candidates, seed=seed)
         p_vals = [v["boot_p_value"] for v in validated]
-        reject, _ = benjamini_hochberg(p_vals, q=CFG.FDR_Q)
+        reject, _ = holm_step_down(p_vals, alpha=CFG.ALPHA_FINAL)
         surviving = [validated[k] for k in range(len(validated)) if reject[k]]
+    pair_diagnostic = None
+    if effect_type == "2way":
+        pair_diagnostic = model.diagnose_pair("vol_expansion", "pct_rank_100", candidates)
     detected = False
     if len(surviving) > 0:
         for surv in surviving:
@@ -247,7 +250,7 @@ def _worker_test_B(job):
     return {
         "seed": seed, "effect_type": effect_type, "eff_size": eff_size, "j": j,
         "n_candidates": len(candidates), "n_surviving": len(surviving),
-        "detected": detected, "true_info": injected["info"], "surviving": surviving[:2],
+        "detected": detected, "true_info": injected["info"], "surviving": surviving[:2], "pair_diagnostic": pair_diagnostic,
     }
 
 
@@ -264,7 +267,7 @@ def _worker_test_C(job):
     if len(candidates) > 0:
         validated = validate_candidates(feat_val, y_val, candidates, seed=seed)
         p_vals = [v["boot_p_value"] for v in validated]
-        reject, _ = benjamini_hochberg(p_vals, q=CFG.FDR_Q)
+        reject, _ = holm_step_down(p_vals, alpha=CFG.ALPHA_FINAL)
         n_surv = int(reject.sum())
     return {
         "market_idx": i, "seed": seed, "n_candidates": len(candidates),
@@ -452,7 +455,7 @@ def assemble_final_report(all_jobs):
     report = {
         "status": "complete", "proceed": proceed, "reasons": reasons,
         "test_A": resA, "test_B": resB, "test_C": resC, "ledger_used": used,
-        "model": "SimpleEBM with purified interaction scoring (TOP30 MAX50)",
+        "model": "SimpleEBM with purified interaction scoring (TOP50 MAX75), Holm FWER validation",
         "config_hash": CONFIG_HASH,
     }
     out_path = CFG.RESULTS_DIR / "v0_report_parallel.json"
