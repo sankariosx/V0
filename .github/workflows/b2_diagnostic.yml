@@ -1,0 +1,25 @@
+name: B2 Targeted Diagnostic
+
+on:
+  workflow_dispatch:
+
+jobs:
+  b2-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      PYTHONHASHSEED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run targeted B2 diagnostic
+        run: python v0_flat/b2_diagnostic.py
+      - name: Upload diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: b2-diagnostic-03
+          path: v0_flat/results/b2_diagnostic_03.json
