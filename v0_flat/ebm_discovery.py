@@ -176,6 +176,7 @@ class SimpleEBM:
         # the multiple-testing burden, and can make the same underlying signal
         # appear many times. Correlation is computed on discovery data only.
         top_idx = np.argsort(self.feature_importances_)[-self.top_features_for_pairs:][::-1]
+        self.top_main_effect_pool_ = [int(i) for i in top_idx]
         X_df = X if isinstance(X, pd.DataFrame) else pd.DataFrame(X_np, columns=self.feature_names_)
         pair_pool = list(dict.fromkeys([int(i) for i in top_idx] + [int(i) for key in sorted(inter_accum) for i in key]))
         self.pair_pool_before_dedup_ = list(pair_pool)
@@ -229,34 +230,65 @@ class SimpleEBM:
         return self
 
     def diagnose_pair(self, feature_a, feature_b, candidates=None):
-        """Trace a named pair through discovery without changing discovery behavior."""
+        """Trace a named pair through each discovery stage without changing discovery."""
         names = {name: i for i, name in enumerate(self.feature_names_)}
         ia, ib = names.get(feature_a), names.get(feature_b)
         out = {"feature_a": feature_a, "feature_b": feature_b}
         if ia is None or ib is None:
-            out.update({"initial_top_pool": False, "pair_pool": False, "dedup_survives": False, "pair_generated": False})
+            out.update({"feature_a_known": ia is not None, "feature_b_known": ib is not None})
             return out
-        out["initial_top_pool"] = bool(ia in getattr(self, "pair_pool_before_dedup_", []) and ib in getattr(self, "pair_pool_before_dedup_", []))
+
+        ia, ib = int(ia), int(ib)
+        original_pair = tuple(sorted((ia, ib))) if ia != ib else None
+        top_main = set(getattr(self, "top_main_effect_pool_", []))
+        pair_pool = set(getattr(self, "pair_pool_before_dedup_", []))
+        interaction_importances = getattr(self, "interaction_importances_", {})
+
+        out["feature_a_in_top_main_effect_pool"] = ia in top_main
+        out["feature_b_in_top_main_effect_pool"] = ib in top_main
+        out["both_in_top_main_effect_pool"] = ia in top_main and ib in top_main
+        out["pair_in_ebm_interaction_recall"] = bool(
+            original_pair is not None and original_pair in interaction_importances
+        )
+        out["pair_in_pair_pool_before_dedup"] = bool(
+            original_pair is not None and ia in pair_pool and ib in pair_pool
+        )
+
         mapped_a = getattr(self, "dedup_feature_map_", {}).get(ia, ia)
         mapped_b = getattr(self, "dedup_feature_map_", {}).get(ib, ib)
-        out["dedup_representatives"] = [self.feature_names_[mapped_a], self.feature_names_[mapped_b]]
-        out["dedup_survives"] = bool(mapped_a != mapped_b or ia == ib)
+        out["dedup_representatives"] = [
+            self.feature_names_[mapped_a], self.feature_names_[mapped_b]
+        ]
+        out["dedup_collapsed_pair"] = bool(mapped_a == mapped_b and ia != ib)
+        out["dedup_survives"] = not out["dedup_collapsed_pair"]
+
         pair = tuple(sorted((int(mapped_a), int(mapped_b)))) if mapped_a != mapped_b else None
-        pair_keys = getattr(self, "pair_keys_generated_", set())
-        out["pair_generated_from_top_pool"] = bool(pair is not None and pair in pair_keys)
-        original_pair = tuple(sorted((int(ia), int(ib)))) if ia != ib else None
-        interaction_recall = getattr(self, "interaction_importances_", {})
-        out["pair_recalled_by_ebm_interaction"] = bool(original_pair is not None and original_pair in interaction_recall)
-        scores = getattr(self, "interaction_scores_purified_", {})
-        if pair is not None and pair in scores:
-            ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-            out["purified_score"] = float(scores[pair])
-            out["purified_rank"] = next((i + 1 for i, (k, _) in enumerate(ranked) if k == pair), None)
+        generated_pairs = getattr(self, "pair_keys_generated_", set())
+        final_pair_keys = getattr(self, "pair_keys_", set())
+        purified_scores = getattr(self, "interaction_scores_purified_", {})
+
+        out["pair_in_all_pairs_after_dedup"] = bool(
+            pair is not None and pair in generated_pairs
+        )
+        out["pair_in_final_pair_keys"] = bool(
+            pair is not None and pair in final_pair_keys
+        )
+        out["pair_in_purified_scores"] = bool(
+            pair is not None and pair in purified_scores
+        )
+
+        if pair is not None and pair in purified_scores:
+            ranked = sorted(purified_scores.items(), key=lambda x: x[1], reverse=True)
+            out["purified_score"] = float(purified_scores[pair])
+            out["purified_rank"] = next(
+                (i + 1 for i, (k, _) in enumerate(ranked) if k == pair), None
+            )
             out["purified_pairs_total"] = len(ranked)
         else:
             out["purified_score"] = None
             out["purified_rank"] = None
-            out["purified_pairs_total"] = len(scores)
+            out["purified_pairs_total"] = len(purified_scores)
+
         if candidates is not None:
             generated_pair_cands = getattr(self, "last_two_way_candidates_", [])
             target_generated = None
@@ -265,6 +297,7 @@ class SimpleEBM:
                 if fs == {self.feature_names_[mapped_a], self.feature_names_[mapped_b]}:
                     target_generated = (i, cand)
                     break
+
             pair_cands = [x for x in candidates if x.get("type") == "2way"]
             target = None
             for i, cand in enumerate(pair_cands, 1):
@@ -272,12 +305,14 @@ class SimpleEBM:
                 if fs == {self.feature_names_[mapped_a], self.feature_names_[mapped_b]}:
                     target = (i, cand)
                     break
+
             out["generated_two_way_candidate_count"] = len(generated_pair_cands)
             out["generated_two_way_rank"] = target_generated[0] if target_generated else None
             out["generated_two_way_candidate"] = target_generated[1] if target_generated else None
             out["final_two_way_candidate_count"] = len(pair_cands)
             out["final_candidate_rank"] = target[0] if target else None
             out["final_candidate"] = target[1] if target else None
+
         return out
 
     def get_top_features(self, k=12):
