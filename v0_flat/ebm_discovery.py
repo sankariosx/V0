@@ -236,14 +236,17 @@ class SimpleEBM:
         if ia is None or ib is None:
             out.update({"initial_top_pool": False, "pair_pool": False, "dedup_survives": False, "pair_generated": False})
             return out
-        out["initial_top_pool"] = bool(ia in getattr(self, "pair_pool_before_dedup_", []))
+        out["initial_top_pool"] = bool(ia in getattr(self, "pair_pool_before_dedup_", []) and ib in getattr(self, "pair_pool_before_dedup_", []))
         mapped_a = getattr(self, "dedup_feature_map_", {}).get(ia, ia)
         mapped_b = getattr(self, "dedup_feature_map_", {}).get(ib, ib)
         out["dedup_representatives"] = [self.feature_names_[mapped_a], self.feature_names_[mapped_b]]
         out["dedup_survives"] = bool(mapped_a != mapped_b or ia == ib)
         pair = tuple(sorted((int(mapped_a), int(mapped_b)))) if mapped_a != mapped_b else None
         pair_keys = getattr(self, "pair_keys_generated_", set())
-        out["pair_generated"] = bool(pair is not None and pair in pair_keys)
+        out["pair_generated_from_top_pool"] = bool(pair is not None and pair in pair_keys)
+        original_pair = tuple(sorted((int(ia), int(ib)))) if ia != ib else None
+        interaction_recall = getattr(self, "interaction_importances_", {})
+        out["pair_recalled_by_ebm_interaction"] = bool(original_pair is not None and original_pair in interaction_recall)
         scores = getattr(self, "interaction_scores_purified_", {})
         if pair is not None and pair in scores:
             ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
