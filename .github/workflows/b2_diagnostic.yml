@@ -15,11 +15,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+          python-version: "3.10"
+      - name: Install pinned V0 dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install interpret==0.4.4 scikit-learn==1.3.2 pandas==2.1.4 numpy==1.26.2 scipy==1.11.4
+      - name: Verify REAL EBM
+        run: |
+          python -c "from interpret.glassbox import ExplainableBoostingRegressor; print('EBM OK')"
       - name: Run targeted B2 diagnostic
-        run: python v0_flat/b2_diagnostic.py
+        working-directory: v0_flat
+        run: python3 -u b2_diagnostic.py
       - name: Upload diagnostic
         uses: actions/upload-artifact@v4
         with:
