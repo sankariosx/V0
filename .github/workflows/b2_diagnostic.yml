@@ -2,6 +2,8 @@ name: B2 Targeted Diagnostic
 
 on:
   workflow_dispatch:
+  push:
+    branches: [b2-diagnostic-fix]
 
 jobs:
   b2-diagnostic:
