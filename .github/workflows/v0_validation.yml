@@ -1,4 +1,5 @@
 name: V0 Validation Resumable
+# 2026-09-22: launch from main after verified B2 discovery + validation-parity fixes.
 
 on:
   push:
