@@ -5,6 +5,7 @@ Validation/bootstrap is omitted because the diagnostic question is where the
 true pair is lost before validation.
 """
 import json
+import os
 
 import config_final as CFG
 from generators import generate_injected_market
@@ -17,8 +18,10 @@ LOCKED_B2_SEEDS = [
 ]
 
 def main():
+    selected = os.getenv("B2_SEED")
+    seeds = [int(selected)] if selected else LOCKED_B2_SEEDS
     rows = []
-    for j, seed in enumerate(LOCKED_B2_SEEDS):
+    for j, seed in enumerate(seeds):
         injected = generate_injected_market(
             n_bars=CFG.N_BARS,
             effect_type="2way",
@@ -53,7 +56,7 @@ def main():
         "validation_omitted": True,
         "rows": rows,
     }
-    out_path = CFG.RESULTS_DIR / "b2_diagnostic_03.json"
+    out_path = CFG.RESULTS_DIR / f"b2_diagnostic_{seeds[0]}.json" if len(seeds) == 1 else CFG.RESULTS_DIR / "b2_diagnostic_03.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, indent=2, default=str))
     print("\nWrote", out_path)
