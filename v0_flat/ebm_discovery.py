@@ -190,10 +190,25 @@ class SimpleEBM:
                 i, j = int(dedup_pool[a]), int(dedup_pool[b])
                 pair_keys.add((i, j) if i < j else (j, i))
 
+        # Keep the correlation-dedup map for diagnostics and for the EBM
+        # interaction-recall channel, but DO NOT replace a top-ranked feature
+        # with a correlated proxy when constructing the actual hypotheses.
+        #
+        # The injected B2 signal is deliberately attached to the original
+        # feature identity. A correlated representative can be a useful proxy,
+        # but substituting it here can erase a real edge before held-out
+        # validation. Discovery selection is allowed to choose among these
+        # hypotheses; validation remains the gatekeeper.
+        for a_pos, i in enumerate(top_idx):
+            for j in top_idx[a_pos + 1:]:
+                i, j = int(i), int(j)
+                pair_keys.add((i, j) if i < j else (j, i))
+
         self.pair_keys_generated_ = set(pair_keys)
 
-        # Preserve the EBM interaction-recall channel, but map correlated
-        # members to their representatives and discard self-pairs.
+        # Preserve the EBM interaction-recall channel. Map correlated members
+        # to representatives only for EBM-recalled terms; top-pool hypotheses
+        # retain their original feature identities.
         for key, _ in sorted(inter_accum.items(), key=lambda x: x[1], reverse=True)[:self.max_interactions]:
             i, j = feature_map.get(int(key[0]), int(key[0])), feature_map.get(int(key[1]), int(key[1]))
             if i != j:
