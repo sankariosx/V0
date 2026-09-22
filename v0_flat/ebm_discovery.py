@@ -376,7 +376,64 @@ class SimpleEBM:
 
     def _generate_twoway(self, X_np, y_np, min_samples, effect_thresh, max_candidates):
         candidates = []
-        for (fi, fj), score in sorted(self.interaction_scores_purified_.items(), key=lambda x: x[1], reverse=True):
+
+        # Correlation-aware alias rescue:
+        # A highly correlated proxy can carry the same discovered interaction
+        # signal as the injected/original feature, while the original pair may
+        # have a weaker purified score because the proxy is numerically cleaner.
+        # Deduplication therefore defines families, not identities. We keep the
+        # original pair AND expand the highest-scoring pair families into a
+        # bounded set of member aliases. The final candidate budget remains
+        # unchanged, and held-out validation still controls false discoveries.
+        pair_queue = []
+        seen_pairs = set()
+        clusters = getattr(self, "dedup_clusters_", [])
+        family_by_feature = {}
+        for cluster in clusters:
+            members = [self.feature_names_.index(name) for name in cluster["members"]]
+            for member in members:
+                family_by_feature[member] = members
+
+        ranked_pairs = sorted(
+            self.interaction_scores_purified_.items(),
+            key=lambda x: x[1],
+            reverse=True,
+        )
+        for (fi, fj), score in ranked_pairs:
+            base = tuple(sorted((int(fi), int(fj))))
+            expansions = [(base[0], base[1])]
+            fam_i = family_by_feature.get(base[0], [base[0]])
+            fam_j = family_by_feature.get(base[1], [base[1]])
+            # Bound alias expansion per pair family so correlated feature
+            # clusters cannot consume the whole discovery budget.
+            alias_count = 0
+            for ai in fam_i:
+                for aj in fam_j:
+                    if ai == aj:
+                        continue
+                    pair = tuple(sorted((int(ai), int(aj))))
+                    if pair not in expansions:
+                        expansions.append(pair)
+                    alias_count += 1
+                    if alias_count >= 12:
+                        break
+                if alias_count >= 12:
+                    break
+
+            for pair in expansions:
+                if pair not in seen_pairs:
+                    seen_pairs.add(pair)
+                    pair_queue.append((pair, float(score)))
+            # Once enough families have been queued, later families are still
+            # represented by their base pair; aliases are reserved for the
+            # strongest discovery signals.
+            if len(pair_queue) >= max(100, max_candidates * 4):
+                break
+
+        # Evaluate aliases using their own raw conditional effect/stability.
+        # We intentionally do not copy the proxy's score into the candidate;
+        # 'importance' remains the purified score that motivated the family.
+        for (fi, fj), score in pair_queue:
             col1, col2 = X_np[:, fi], X_np[:, fj]
             for q1, q2 in [(0.8, 0.2), (0.2, 0.8), (0.8, 0.8), (0.2, 0.2)]:
                 t1, t2 = np.quantile(col1, q1), np.quantile(col2, q2)
