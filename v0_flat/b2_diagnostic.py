@@ -35,8 +35,11 @@ def main():
         )
         model, candidates = run_discovery_on_dataset(xd, yd, seed=seed)
         diag = model.diagnose_pair("vol_expansion", "pct_rank_100", candidates)
-        candidate_hit = any(
-            set(c.get("features", [])) >= {"vol_expansion", "pct_rank_100"}
+        target_names = {"vol_expansion", "pct_rank_100"}
+        candidate_hit = any(set(c.get("features", [])) >= target_names for c in candidates)
+        mapped = set(diag.get("dedup_representatives", []))
+        mapped_candidate_hit = bool(mapped == target_names) or any(
+            set(c.get("features", [])) == mapped
             for c in candidates
         )
         row = {
@@ -44,6 +47,7 @@ def main():
             "seed": seed,
             "n_candidates": len(candidates),
             "candidate_hit": candidate_hit,
+            "mapped_candidate_hit": mapped_candidate_hit,
             "diagnostic": diag,
         }
         rows.append(row)
