@@ -22,11 +22,10 @@ permissions:
 
 concurrency:
   group: v0-validation-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   run-v0:
-    if: ${{ !contains(github.event.head_commit.message, 'NOOP') }}
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
