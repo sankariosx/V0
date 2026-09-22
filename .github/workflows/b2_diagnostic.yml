@@ -7,10 +7,15 @@ on:
 
 jobs:
   b2-diagnostic:
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [88117, 91751, 65440, 93810, 24107, 33084, 29450, 31025, 60097, 97094]
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
     env:
       PYTHONHASHSEED: "0"
+      B2_SEED: ${{ matrix.seed }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -23,11 +28,11 @@ jobs:
       - name: Verify REAL EBM
         run: |
           python -c "from interpret.glassbox import ExplainableBoostingRegressor; print('EBM OK')"
-      - name: Run targeted B2 diagnostic
+      - name: Run one-seed B2 diagnostic
         working-directory: v0_flat
         run: python3 -u b2_diagnostic.py
       - name: Upload diagnostic
         uses: actions/upload-artifact@v4
         with:
-          name: b2-diagnostic-03
-          path: v0_flat/results/b2_diagnostic_03.json
+          name: b2-diagnostic-${{ matrix.seed }}
+          path: v0_flat/results/b2_diagnostic_${{ matrix.seed }}.json
