@@ -3,8 +3,11 @@ name: C False Positive Diagnostic
 on:
   workflow_dispatch:
   push:
+    branches:
+      - c-diagnostic-fix
     paths:
       - 'v0_flat/c_diagnostic.py'
+      - '.github/workflows/c_diagnostic.yml'
 
 jobs:
   diagnostic:
@@ -15,8 +18,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: Install pinned dependencies
-        run: pip install interpret==0.4.4 scikit-learn==1.3.2 pandas==2.1.4 numpy==1.26.2 scipy==1.11.4
+      - name: Install pinned V0 dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install interpret==0.4.4 scikit-learn==1.3.2 pandas==2.1.4 numpy==1.26.2 scipy==1.11.4
+      - name: Verify REAL EBM
+        run: |
+          python -c "from interpret.glassbox import ExplainableBoostingRegressor; print('EBM OK')"
+      - name: Verify this is the C diagnostic
+        run: |
+          grep -n "C False Positive Diagnostic" .github/workflows/c_diagnostic.yml
+          grep -n "c_diagnostic.py" .github/workflows/c_diagnostic.yml
+          grep -n "SEEDS = \[3014, 3019\]" v0_flat/c_diagnostic.py
       - name: Run focused C diagnostic
         working-directory: v0_flat
         run: python3 -u c_diagnostic.py
