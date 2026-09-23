@@ -41,7 +41,7 @@ def run(seed):
         max_interactions=MAX_INTERACTIONS,
         seed=seed,
     )
-    model.fit(fd)
+    model.fit(fd, yd)
     candidates = model.generate_candidate_hypotheses(
         fd,
         yd,
