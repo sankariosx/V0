@@ -122,30 +122,75 @@ def generate_injected_market(n_bars=N_BARS, effect_type="1way", effect_size=0.3,
     return {"ohlc": base_df_aligned, "features": feat, "y_base": y_base, "y_injected": y_injected, "condition": condition, "info": info}
 
 def generate_adversarial_null(n_bars=N_BARS, n_features_target=120, seed=None):
+    """Generate a genuinely adversarial null.
+
+    Features come from one GARCH realization. The validation target is generated
+    from an independent innovation realization conditional on the SAME volatility
+    path. This preserves realistic heteroskedasticity while breaking any
+    feature/target conditional-mean relationship.
+
+    This is intentionally isolated to Test C; Test A/B generators are unchanged.
+    """
     from features import build_features
     import numpy as np
+
     rng = np.random.default_rng(seed)
     base_df = generate_null_market(n_bars=n_bars, seed=seed)
-    feat_base, y_base = build_features(base_df, horizon=HORIZON, vol_window=VOL_WINDOW)
+    feat_base, _ = build_features(base_df, horizon=HORIZON, vol_window=VOL_WINDOW)
+
+    # Recreate the target path using the base process's conditional volatility,
+    # but independent innovations. This keeps volatility clustering while
+    # guaranteeing that future signed shocks are independent of base features.
+    sigma = base_df["sigma_true"].to_numpy(dtype=float)
+    df_t = T_DF
+    scale = np.sqrt((df_t - 2) / df_t)
+    z = rng.standard_t(df_t, size=n_bars) * scale
+
+    # Preserve the gap mechanism without reusing the base path's gap draws.
+    gaps = rng.random(n_bars) < GAP_PROB
+    target_returns = sigma * z * np.where(gaps, GAP_MULT, 1.0)
+    target_df = generate_ohlc_from_returns(target_returns, seed=int(rng.integers(0, 2**32 - 1)))
+
+    _, y_base = build_features(target_df, horizon=HORIZON, vol_window=VOL_WINDOW)
+
     common = feat_base.index.intersection(y_base.index)
-    feat_base = feat_base.loc[common]; y_base = y_base.loc[common]
+    feat_base = feat_base.loc[common]
+    y_base = y_base.loc[common]
+
     n_base = feat_base.shape[1]
-    expanded = {}
-    for c in feat_base.columns:
-        expanded[c] = feat_base[c].values
+    expanded = {c: feat_base[c].values for c in feat_base.columns}
     idx = 0
     while len(expanded) < n_features_target - 30:
         base_col = feat_base.columns[idx % n_base]
-        noise = rng.normal(0, 0.1 * feat_base[base_col].std() + 1e-8, size=len(feat_base))
+        noise = rng.normal(
+            0, 0.1 * feat_base[base_col].std() + 1e-8, size=len(feat_base)
+        )
         expanded[f"{base_col}_copy{idx}"] = feat_base[base_col].values + noise
         idx += 1
+
     for i in range(30):
         expanded[f"noise_{i}"] = rng.normal(0, 1, size=len(feat_base))
+
     for i in range(5):
         c1, c2 = rng.choice(feat_base.columns, 2, replace=False)
-        expanded[f"combo_{i}"] = 0.6*feat_base[c1].values + 0.4*feat_base[c2].values + rng.normal(0,0.05,size=len(feat_base))
+        expanded[f"combo_{i}"] = (
+            0.6 * feat_base[c1].values
+            + 0.4 * feat_base[c2].values
+            + rng.normal(0, 0.05, size=len(feat_base))
+        )
+
     import pandas as pd
     feat_expanded = pd.DataFrame(expanded, index=feat_base.index)
     cols = list(feat_expanded.columns)[:n_features_target]
     feat_expanded = feat_expanded[cols]
-    return {"ohlc": base_df.loc[common], "features": feat_expanded, "y_base": y_base, "y_injected": y_base, "info": {"n_features": len(cols), "type": "adversarial_null"}}
+
+    return {
+        "ohlc": base_df.loc[common],
+        "features": feat_expanded,
+        "y_base": y_base,
+        "y_injected": y_base,
+        "info": {
+            "n_features": len(cols),
+            "type": "adversarial_null_independent_innovations",
+        },
+    }
