@@ -7,6 +7,7 @@ on:
       - c-diagnostic-fix
     paths:
       - 'v0_flat/c_diagnostic.py'
+      - 'v0_flat/generators.py'
       - '.github/workflows/c_diagnostic.yml'
 
 jobs:
