@@ -1,10 +1,6 @@
 name: V0 Real XAUUSD Discovery
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/v0_real_xauusd.yml'
   workflow_dispatch:
 
 permissions:
