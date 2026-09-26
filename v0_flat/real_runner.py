@@ -144,6 +144,12 @@ def main():
         df, horizon=HORIZON, vol_window=VOL_WINDOW
     )
 
+    # Controlled real-data sensitivity test: remove all clock/session features.
+    # This is the ONLY methodological change versus the validated #4 runner.
+    # Synthetic V0 and the core discovery/validation machinery are untouched.
+    session_features = ["hour_sin", "hour_cos", "is_london", "is_ny", "is_overlap"]
+    feat = feat.drop(columns=[c for c in session_features if c in feat.columns])
+
     # The feature builder can produce a numeric target across a market closure.
     # Re-apply the target using the original timestamp index so 16 means
     # exactly 16 consecutive M15 observations / 4 clock hours.
@@ -168,6 +174,8 @@ def main():
         "discovery_fraction": DISCOVERY_FRAC,
         "purge_bars": PURGE_GAP_BARS,
         "model": "validated V0 SimpleEBM discovery + Holm FWER held-out validation",
+        "sensitivity_test": "remove UTC clock/session features only",
+        "removed_features": ["hour_sin", "hour_cos", "is_london", "is_ny", "is_overlap"],
     }
     report["discovery"] = discover(feat, target)
 
