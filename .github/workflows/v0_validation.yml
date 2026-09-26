@@ -3,7 +3,6 @@ name: V0 Validation Resumable
 
 on:
   workflow_dispatch:
-  workflow_dispatch:
     inputs:
       resume_from_run_id:
         description: 'Exact workflow run ID whose v0-checkpoints artifact should be restored'
@@ -79,7 +78,7 @@ jobs:
           if_no_artifact_found: warn
 
       - name: Confirm clean checkpoint state
-        if: github.event_name == 'push' || inputs.clean_run == true
+        if: inputs.clean_run == true
         working-directory: v0_flat
         run: |
           count=$(find results/checkpoints -type f -name '*.json' | wc -l)
