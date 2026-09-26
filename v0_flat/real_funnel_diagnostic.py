@@ -1,5 +1,5 @@
 """
-Run-5 real XAUUSD discovery funnel diagnostic.
+Run-5 real XAUUSD discovery funnel diagnostic.\n# Trigger revision: diagnostic workflow is intentionally isolated from main.
 
 This is diagnostic-only. It does not modify the production V0 runner or launch
 the 170-job synthetic validation. It reproduces the real-data discovery path
