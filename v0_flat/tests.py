@@ -16,7 +16,7 @@ MULTIPLE_TEST_ALPHA = ALPHA_FINAL
 def run_discovery_on_dataset(features, y, seed=None):
     model = SimpleEBM(outer_bags=OUTER_BAGS, bag_frac=BAG_SAMPLE_FRAC, boost_rounds=BOOST_ROUNDS, max_depth=TREE_MAX_DEPTH, top_features_for_pairs=TOP_FEATURES_FOR_PAIRS, max_interactions=MAX_INTERACTIONS, seed=seed)
     model.fit(features, y)
-    candidates = model.generate_candidate_hypotheses(features, y, min_samples=MIN_SAMPLES_FOR_EDGE, effect_thresh=EFFECT_SIZE_THRESH, max_candidates=50)
+    candidates = model.generate_candidate_hypotheses(features, y, min_samples=MIN_SAMPLES_FOR_EDGE, effect_thresh=EFFECT_SIZE_THRESH, max_candidates=MAX_DISCOVERY_CANDIDATES)
     return model, candidates
 
 def validate_candidates(feat_val, y_val, candidates, block_len=BLOCK_LENGTH, n_boot=N_BOOTSTRAP, seed=None):
