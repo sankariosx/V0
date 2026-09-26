@@ -11,6 +11,7 @@ except Exception as e:
     _import_error = e
 
 from purified_interaction_scoring import purified_interaction_score
+from config_final import ONE_WAY_CANDIDATE_FRACTION
 
 
 class SimpleEBM:
