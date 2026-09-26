@@ -2,6 +2,8 @@ name: V0 Real XAUUSD Discovery
 
 on:
   workflow_dispatch:
+  push:
+    branches: [real-xauusd-session-sensitivity]
 
 permissions:
   contents: read
