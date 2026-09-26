@@ -11,6 +11,7 @@ except Exception as e:
     _import_error = e
 
 from purified_interaction_scoring import purified_interaction_score
+from config_final import ONE_WAY_CANDIDATE_FRACTION
 
 
 class SimpleEBM:
@@ -471,7 +472,7 @@ class SimpleEBM:
     def generate_candidate_hypotheses(self, X, y, min_samples=500, effect_thresh=0.12, max_candidates=50):
         X_np = X.values if isinstance(X, pd.DataFrame) else np.asarray(X)
         y_np = np.asarray(y)
-        one_budget = max(1, max_candidates // 2)
+        one_budget = max(1, int(round(max_candidates * ONE_WAY_CANDIDATE_FRACTION)))
         two_budget = max_candidates - one_budget
         one = self._generate_oneway(X_np, y_np, min_samples, effect_thresh, one_budget)
         two = self._generate_twoway(X_np, y_np, min_samples, effect_thresh, two_budget)

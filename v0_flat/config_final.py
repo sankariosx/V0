@@ -37,6 +37,14 @@ ALPHA_FINAL = 0.05
 FDR_Q = 0.05
 HYPOTHESIS_BUDGET = 200
 
+# Candidate funnel control.
+# The previous production cap generated only 25 two-way candidates even
+# though 166 two-way rules had already passed discovery effect + stability.
+# Keep the statistical thresholds unchanged, but give two-way discovery
+# materially more room before held-out validation.
+MAX_DISCOVERY_CANDIDATES = 150
+ONE_WAY_CANDIDATE_FRACTION = 0.15
+
 # --- LOCKED SAMPLE SIZES ---
 TEST_A_N_MARKETS = 30
 TEST_B_EFFECT_SIZES = [0.1, 0.2, 0.3, 0.5]
