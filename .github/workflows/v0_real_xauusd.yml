@@ -1,6 +1,10 @@
 name: V0 Real XAUUSD Discovery
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/v0_real_xauusd.yml'
   workflow_dispatch:
 
 permissions:
@@ -35,11 +39,13 @@ jobs:
           mkdir -p data
           npm install -g dukascopy-node
           dukascopy-node -i xauusd -from 2015-01-01 -to 2026-09-01 -t m15 -f csv --batch-size 10 --batch-pause 1000
-          f=$(find . -maxdepth 1 -type f -name 'xauusd-*.csv' | head -n 1)
-          test -n "$f"
+          f="download/xauusd-m15-bid-2015-01-01-2026-09-01.csv"
+          test -f "$f"
           cp "$f" data/xauusd_m15.csv
+          echo "Using Dukascopy XAUUSD M15: $f"
           wc -l data/xauusd_m15.csv
           head -n 3 data/xauusd_m15.csv
+          tail -n 3 data/xauusd_m15.csv
 
       - name: Run real-data V0 discovery
         working-directory: v0_flat
