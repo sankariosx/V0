@@ -53,7 +53,13 @@ def load_data(path):
     if missing:
         raise ValueError(f"Missing OHLC columns: {missing}")
 
-    df[ts_col] = pd.to_datetime(df[ts_col], utc=False)
+    # Dukascopy exports timestamp as Unix milliseconds. Without unit="ms",
+    # pandas interprets it as nanoseconds, collapsing 2015-2026 into hours
+    # and making the exact-4h horizon mask empty.
+    if ts_col == "timestamp" and pd.api.types.is_numeric_dtype(df[ts_col]):
+        df[ts_col] = pd.to_datetime(df[ts_col], unit="ms", utc=True)
+    else:
+        df[ts_col] = pd.to_datetime(df[ts_col], utc=True)
     df = df.set_index(ts_col).sort_index()
 
     if df.index.has_duplicates:
