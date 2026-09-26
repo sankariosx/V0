@@ -1,16 +1,6 @@
 name: V0 Real XAUUSD Discovery
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'v0_flat/real_runner.py'
-      - 'v0_flat/features.py'
-      - 'v0_flat/tests.py'
-      - 'v0_flat/validation.py'
-      - 'v0_flat/ebm_discovery.py'
-      - 'v0_flat/config_final.py'
-      - '.github/workflows/v0_real_xauusd.yml'
   workflow_dispatch:
 
 permissions:
