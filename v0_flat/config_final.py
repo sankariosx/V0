@@ -43,7 +43,7 @@ HYPOTHESIS_BUDGET = 200
 # Keep the statistical thresholds unchanged, but give two-way discovery
 # materially more room before held-out validation.
 MAX_DISCOVERY_CANDIDATES = 150
-ONE_WAY_CANDIDATE_FRACTION = 0.15
+ONE_WAY_CANDIDATE_FRACTION = 0.30
 
 # --- LOCKED SAMPLE SIZES ---
 TEST_A_N_MARKETS = 30
