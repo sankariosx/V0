@@ -67,10 +67,10 @@ def test_A_null_markets(n_markets=TEST_A_N_MARKETS, seed_base=1000):
     print(f"TEST A RESULT: FPR = {false_positives}/{n_markets} = {fpr:.3f} (threshold {MAX_FPR_TEST_A})")
     return {"fpr":fpr,"false_positives":false_positives,"n_markets":n_markets,"details":results}
 
-def test_B_injected(effect_sizes=TEST_B_EFFECT_SIZES, n_per_size=TEST_B_N_MARKETS_PER_SIZE, seed_base=2000):
+def test_B_injected(effect_sizes=TEST_B_EFFECT_SIZES, n_per_size=TEST_B_N_MARKETS_PER_SIZE, seed_base=2000, effect_types=("1way","2way","3way")):
     print(f"\n=== TEST B: Injected Edges FINAL N={N_BARS} ===")
     all_results={}
-    for effect_type in ["1way","2way","3way"]:
+    for effect_type in effect_types:
         print(f"\n-- {effect_type} --")
         type_results={}
         for eff_size in effect_sizes:
