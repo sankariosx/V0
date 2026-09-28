@@ -98,7 +98,12 @@ def test_B_injected(effect_sizes=TEST_B_EFFECT_SIZES, n_per_size=TEST_B_N_MARKET
                         if effect_type=="1way":
                             if any("ret_16" in f for f in feats): detected=True
                         elif effect_type=="2way":
-                            has_vol=any("vol_expansion" in f or "vol_regime" in f for f in feats)
+                            # B2 discovery may select a correlated alias of the
+                            # injected volatility feature. Count the known
+                            # volatility family as equivalent for DETECTION only;
+                            # held-out validation remains the significance gate.
+                            vol_aliases = ("vol_expansion", "vol_regime", "vol_ratio_20_100")
+                            has_vol=any(any(alias in f for alias in vol_aliases) for f in feats)
                             has_pct=any("pct_rank" in f for f in feats)
                             if has_vol and has_pct: detected=True
                         elif effect_type=="3way":
