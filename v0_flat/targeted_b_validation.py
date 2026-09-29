@@ -1,20 +1,26 @@
 import numpy as np
 from generators import generate_injected_market
-from validation import split_discovery_validation, replication_check
-from config_final import N_BARS, PURGE_GAP_BARS
+from validation import split_discovery_validation
+from tests import run_discovery_on_dataset, validate_candidates
 
-def preflight(effect_type, seed):
-    injected = generate_injected_market(n_bars=N_BARS, effect_type=effect_type, effect_size=0.3, seed=seed)
+def diagnose(effect_type, seed):
+    injected = generate_injected_market(n_bars=12000, effect_type=effect_type, effect_size=0.3, seed=seed)
     feat, y = injected["features"], injected["y_injected"]
-    _, _, feat_val, y_val = split_discovery_validation(feat, y, frac=0.6, purge=PURGE_GAP_BARS)
-    true_cond = injected["condition"].loc[feat_val.index].to_numpy(dtype=bool)
-    effect = float(np.mean(y_val.to_numpy()[true_cond]) - np.mean(y_val.to_numpy()))
-    replicated, effects = replication_check(y_val.to_numpy(), true_cond)
-    print(f"PRECHECK {effect_type} seed={seed}: n_val={len(y_val)} n_cond={int(true_cond.sum())} effect={effect:.4f} replicated={replicated} blocks={[round(x,4) for x in effects]}")
-    return effect, replicated
+    fd, yd, fv, yv = split_discovery_validation(feat, y, frac=0.6, purge=16)
+    model, candidates = run_discovery_on_dataset(fd, yd, seed=seed)
+    print(f"DIAG {effect_type}: candidates={len(candidates)}")
+    print("TOP FEATURES:", model.get_top_features(20))
+    print("TOP INTERACTIONS:", model.get_top_interactions(20))
+    target = "ret_16" if effect_type=="1way" else "vol_expansion"
+    if target in model.feature_names_:
+        ti=model.feature_names_.index(target)
+        print(f"TARGET {target}: importance={model.feature_importances_[ti]:.8f} rank={int(np.sum(model.feature_importances_ > model.feature_importances_[ti]))+1}")
+    if effect_type=="2way":
+        print("PAIR DIAG:", model.diagnose_pair("vol_expansion","pct_rank_100",candidates))
+    if candidates:
+        validated=validate_candidates(fv,yv,candidates,n_boot=100,seed=seed)
+        print("VALIDATED TOP:", [(v["features"], round(v["boot_effect"],4), round(v["boot_p_value"],4), v["n_cond_val"]) for v in validated[:10]])
 
-for effect_type, seeds in (("1way", (2001, 2002)), ("2way", (3001, 3002))):
-    for seed in seeds:
-        preflight(effect_type, seed)
-
-print("PREFLIGHT COMPLETE")
+diagnose("1way", 2001)
+diagnose("2way", 3001)
+print("DISCOVERY DIAGNOSTIC COMPLETE")
