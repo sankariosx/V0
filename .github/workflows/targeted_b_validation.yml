@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'v0_flat/targeted_b_validation.py'
+      - '.github/workflows/targeted_b_validation.yml'
   workflow_dispatch:
 
 permissions:
