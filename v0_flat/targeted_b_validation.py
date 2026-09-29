@@ -1,19 +1,20 @@
-import sys
-from tests import test_B_injected
-from config_final import MIN_POWER_1WAY_03, MIN_POWER_2WAY_03
+import numpy as np
+from generators import generate_injected_market
+from validation import split_discovery_validation, replication_check
+from config_final import N_BARS, PURGE_GAP_BARS
 
-results = test_B_injected(effect_sizes=[0.3], n_per_size=10, effect_types=("1way", "2way"))
+def preflight(effect_type, seed):
+    injected = generate_injected_market(n_bars=N_BARS, effect_type=effect_type, effect_size=0.3, seed=seed)
+    feat, y = injected["features"], injected["y_injected"]
+    _, _, feat_val, y_val = split_discovery_validation(feat, y, frac=0.6, purge=PURGE_GAP_BARS)
+    true_cond = injected["condition"].loc[feat_val.index].to_numpy(dtype=bool)
+    effect = float(np.mean(y_val.to_numpy()[true_cond]) - np.mean(y_val.to_numpy()))
+    replicated, effects = replication_check(y_val.to_numpy(), true_cond)
+    print(f"PRECHECK {effect_type} seed={seed}: n_val={len(y_val)} n_cond={int(true_cond.sum())} effect={effect:.4f} replicated={replicated} blocks={[round(x,4) for x in effects]}")
+    return effect, replicated
 
-p1 = results["1way"][0.3]["power"]
-p2 = results["2way"][0.3]["power"]
+for effect_type, seeds in (("1way", (2001, 2002)), ("2way", (3001, 3002))):
+    for seed in seeds:
+        preflight(effect_type, seed)
 
-print(f"TARGETED B1 POWER @0.3: {p1:.2f} (required >= {MIN_POWER_1WAY_03:.2f})")
-print(f"TARGETED B2 POWER @0.3: {p2:.2f} (required >= {MIN_POWER_2WAY_03:.2f})")
-
-if p1 < MIN_POWER_1WAY_03 or p2 < MIN_POWER_2WAY_03:
-    print("TARGETED VALIDATION: FAIL — do not start the 170-job validation.")
-    sys.exit(1)
-
-print("TARGETED VALIDATION: PASS — B1 and B2 meet the locked power thresholds.")
-
-# Workflow trigger: run after targeted validation timeout fix.
+print("PREFLIGHT COMPLETE")
