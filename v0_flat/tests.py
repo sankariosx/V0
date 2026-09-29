@@ -77,7 +77,7 @@ def test_B_injected(effect_sizes=TEST_B_EFFECT_SIZES, n_per_size=TEST_B_N_MARKET
             print(f"  Effect size {eff_size}")
             detections=0; details=[]
             for j in range(n_per_size):
-                seed=seed_base+abs(hash((effect_type, eff_size, j)))%100000
+                seed=seed_base + (0 if effect_type == "1way" else 10000 if effect_type == "2way" else 20000) + int(round(eff_size * 1000)) * 100 + j
                 injected=generate_injected_market(n_bars=N_BARS, effect_type=effect_type, effect_size=eff_size, seed=seed)
                 feat=injected["features"]; y=injected["y_injected"]
                 feat_disc,y_disc,feat_val,y_val=split_discovery_validation(feat, y, frac=DISCOVERY_FRAC, purge=PURGE_GAP_BARS)
