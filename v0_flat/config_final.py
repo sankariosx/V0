@@ -42,8 +42,8 @@ HYPOTHESIS_BUDGET = 200
 # though 166 two-way rules had already passed discovery effect + stability.
 # Keep the statistical thresholds unchanged, but give two-way discovery
 # materially more room before held-out validation.
-MAX_DISCOVERY_CANDIDATES = 150
-ONE_WAY_CANDIDATE_FRACTION = 0.30
+MAX_DISCOVERY_CANDIDATES = 50
+ONE_WAY_CANDIDATE_FRACTION = 0.50
 
 # --- LOCKED SAMPLE SIZES ---
 TEST_A_N_MARKETS = 30
