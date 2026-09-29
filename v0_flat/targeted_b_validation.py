@@ -3,6 +3,7 @@ from generators import generate_injected_market
 from validation import split_discovery_validation
 from tests import run_discovery_on_dataset, validate_candidates
 
+# Focused diagnostic: small sample only; never starts the 170-job validation.
 for effect_type, seed in (("1way", 2001), ("2way", 3001)):
     injected = generate_injected_market(n_bars=12000, effect_type=effect_type, effect_size=0.3, seed=seed)
     feat, y = injected["features"], injected["y_injected"]
