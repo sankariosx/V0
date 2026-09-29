@@ -5,10 +5,13 @@ on:
     paths:
       - 'v0_flat/targeted_b_validation.py'
       - '.github/workflows/targeted_b_validation.yml'
+  issues:
+    types: [opened]
   workflow_dispatch:
 
 permissions:
   contents: read
+  issues: read
 
 jobs:
   targeted-b:
