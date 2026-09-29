@@ -103,8 +103,9 @@ def test_B_injected(effect_sizes=TEST_B_EFFECT_SIZES, n_per_size=TEST_B_N_MARKET
                             # volatility family as equivalent for DETECTION only;
                             # held-out validation remains the significance gate.
                             vol_aliases = ("vol_expansion", "vol_regime", "vol_ratio_20_100")
+                            pct_aliases = ("pct_rank", "rel_pos_100")
                             has_vol=any(any(alias in f for alias in vol_aliases) for f in feats)
-                            has_pct=any("pct_rank" in f for f in feats)
+                            has_pct=any(any(alias in f for alias in pct_aliases) for f in feats)
                             if has_vol and has_pct: detected=True
                         elif effect_type=="3way":
                             has_vol=any("vol_regime" in f for f in feats)
