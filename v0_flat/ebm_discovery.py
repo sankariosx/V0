@@ -428,7 +428,7 @@ class SimpleEBM:
             # Once enough families have been queued, later families are still
             # represented by their base pair; aliases are reserved for the
             # strongest discovery signals.
-            if len(pair_queue) >= max(100, max_candidates * 4):
+            if len(pair_queue) >= max(100, max_candidates * 20):
                 break
 
         # Evaluate aliases using their own raw conditional effect/stability.
