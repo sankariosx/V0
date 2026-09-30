@@ -67,7 +67,7 @@ def test_A_null_markets(n_markets=TEST_A_N_MARKETS, seed_base=1000):
     print(f"TEST A RESULT: FPR = {false_positives}/{n_markets} = {fpr:.3f} (threshold {MAX_FPR_TEST_A})")
     return {"fpr":fpr,"false_positives":false_positives,"n_markets":n_markets,"details":results}
 
-def test_B_injected(effect_sizes=TEST_B_EFFECT_SIZES, n_per_size=TEST_B_N_MARKETS_PER_SIZE, seed_base=2000, effect_types=("1way","2way","3way")):
+def test_B_injected(effect_sizes=TEST_B_EFFECT_SIZES, n_per_size=TEST_B_N_MARKETS_PER_SIZE, seed_base=2000, effect_types=("1way","2way","3way"), seed_schedule=None):
     print(f"\n=== TEST B: Injected Edges FINAL N={N_BARS} ===")
     all_results={}
     for effect_type in effect_types:
@@ -77,7 +77,7 @@ def test_B_injected(effect_sizes=TEST_B_EFFECT_SIZES, n_per_size=TEST_B_N_MARKET
             print(f"  Effect size {eff_size}")
             detections=0; details=[]
             for j in range(n_per_size):
-                seed=seed_base + (0 if effect_type == "1way" else 10000 if effect_type == "2way" else 20000) + int(round(eff_size * 1000)) * 100 + j
+                seed = (seed_schedule[effect_type][str(eff_size)][j] if seed_schedule is not None else seed_base + (0 if effect_type == "1way" else 10000 if effect_type == "2way" else 20000) + int(round(eff_size * 1000)) * 100 + j)
                 injected=generate_injected_market(n_bars=N_BARS, effect_type=effect_type, effect_size=eff_size, seed=seed)
                 feat=injected["features"]; y=injected["y_injected"]
                 feat_disc,y_disc,feat_val,y_val=split_discovery_validation(feat, y, frac=DISCOVERY_FRAC, purge=PURGE_GAP_BARS)
