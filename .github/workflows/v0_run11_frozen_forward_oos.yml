@@ -35,8 +35,8 @@ jobs:
           mkdir -p data
           npm install -g dukascopy-node
           dukascopy-node -i xauusd -from 2026-07-01 -to 2026-10-03 -t m15 -f csv --batch-size 10 --batch-pause 1000
-          f="download/xauusd-m15-bid-2026-07-01-2026-10-03.csv"
-          test -f "$f"
+          f=$(ls -1t download/xauusd-m15-bid-*.csv | head -n1)
+          test -n "$f"
           cp "$f" data/xauusd_m15.csv
           wc -l data/xauusd_m15.csv
       - name: Run frozen forward OOS
@@ -51,4 +51,4 @@ jobs:
           path: v0_flat/results/run11_frozen_forward_oos.json
           retention-days: 90
 
-# Trigger update: workflow creation itself did not enqueue a run; this change forces the intended single run.
+# Fixed Dukascopy's dynamic end-date filename; the downloaded file is now selected safely.
