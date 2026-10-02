@@ -63,16 +63,19 @@ def add_ema(df):
 def green(r): return r["close"] > r["open"]
 def red(r): return r["close"] < r["open"]
 
-def finish_record(direction, start_i, start_ts, signal_i, signal_ts, target,
-                  failure, outcome, outcome_i, outcome_ts, ambiguous=False):
+def finish_record(direction, start_i, start_ts, signal_i, signal_ts, entry,
+                  target, failure, outcome, outcome_i, outcome_ts, ambiguous=False):
     bars_to_signal = signal_i - start_i
     bars_to_outcome = None if outcome_i is None else outcome_i - signal_i
     return {
         "direction": direction,
         "start": str(start_ts),
         "signal": str(signal_ts),
+        "entry": float(entry),
         "target": float(target),
         "failure_level": float(failure),
+        "R": (None if ambiguous or outcome not in ("success", "failure") else
+              (abs(target - entry) / abs(entry - failure) if outcome == "success" else -1.0)),
         "outcome": outcome,
         "ambiguous_same_bar": bool(ambiguous),
         "bars_to_signal": int(bars_to_signal),
@@ -194,9 +197,12 @@ def scan(df, direction):
                 break
             k += 1
 
+        # Entry convention: signal candle OPEN. This allows an immediate
+        # same-candle target touch to count as a captured success.
+        entry = rows[signal_i]["open"]
         results.append(finish_record(
             direction, i, rows[i]["timestamp"], signal_i, rows[signal_i]["timestamp"],
-            target, failure, outcome, outcome_i, outcome_ts, ambiguous
+            entry, target, failure, outcome, outcome_i, outcome_ts, ambiguous
         ))
 
         # Current setup is finished. Resume scanning only after its outcome.
@@ -214,6 +220,9 @@ def summarize(results):
     resolved = wins + losses
     immediate = sum(x["immediate_success"] for x in results)
     delayed = sum(x["delayed_success"] for x in results)
+    rvals = [x["R"] for x in results if x["R"] is not None]
+    mean_r = float(np.mean(rvals)) if rvals else None
+    total_r = float(np.sum(rvals)) if rvals else None
     def mean(key):
         vals = [x[key] for x in results if x[key] is not None]
         return float(np.mean(vals)) if vals else None
@@ -227,6 +236,10 @@ def summarize(results):
         "success_rate_all_setups": (wins / total) if total else None,
         "immediate_successes": immediate,
         "delayed_successes": delayed,
+        "total_R": total_r,
+        "expectancy_R_per_resolved_setup": mean_r,
+        "mean_win_R": (float(np.mean([x["R"] for x in results if x["R"] is not None and x["R"] > 0]))
+                       if any(x["R"] is not None and x["R"] > 0 for x in results) else None),
         "mean_bars_to_signal": mean("bars_to_signal"),
         "mean_bars_to_outcome": mean("bars_to_outcome"),
     }
@@ -239,6 +252,7 @@ def main():
         "rules_fixed": True,
         "one_setup_at_a_time": True,
         "ema": "21 EMA on the tested timeframe",
+        "R_entry": "signal candle open",
         "timeframes": {},
     }
 
