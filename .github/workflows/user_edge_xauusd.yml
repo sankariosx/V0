@@ -1,0 +1,52 @@
+name: User Edge XAUUSD Multi-Timeframe Test
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'v0_flat/run_user_edge_xauusd.py'
+      - '.github/workflows/user_edge_xauusd.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: user-edge-xauusd
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Download Dukascopy XAUUSD M15 data
+        working-directory: v0_flat
+        run: |
+          mkdir -p data
+          npm install -g dukascopy-node
+          dukascopy-node -i xauusd -from 2015-01-01 -to 2026-10-03 -t m15 -f csv --batch-size 10 --batch-pause 1000
+          f="download/xauusd-m15-bid-2015-01-01-2026-10-03.csv"
+          test -f "$f"
+          cp "$f" data/xauusd_m15.csv
+          wc -l data/xauusd_m15.csv
+
+      - name: Run deterministic edge test
+        working-directory: v0_flat
+        run: |
+          python3 -m py_compile run_user_edge_xauusd.py
+          python3 -u run_user_edge_xauusd.py
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: user-edge-xauusd-multitimeframe
+          path: v0_flat/results/user_edge_xauusd_timeframes.json
+          retention-days: 90
