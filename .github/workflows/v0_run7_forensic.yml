@@ -1,0 +1,45 @@
+name: V0 Run7 Forensic Validation
+
+on:
+  push:
+    paths:
+      - v0_flat/run7_forensic.py
+      - .github/workflows/v0_run7_forensic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v0-run7-forensic
+  cancel-in-progress: true
+
+jobs:
+  forensic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas==2.1.4 numpy==1.26.2 scipy==1.11.4
+      - name: Download Dukascopy XAUUSD M15
+        working-directory: v0_flat
+        run: |
+          mkdir -p data results
+          npm install -g dukascopy-node
+          dukascopy-node -i xauusd -from 2015-01-01 -to 2026-09-01 -t m15 -f csv --batch-size 10 --batch-pause 1000
+          cp download/xauusd-m15-bid-2015-01-01-2026-09-01.csv data/xauusd_m15.csv
+      - name: Run forensic validation
+        working-directory: v0_flat
+        run: python3 -u run7_forensic.py
+      - name: Upload forensic result
+        uses: actions/upload-artifact@v4
+        with:
+          name: v0-run7-forensic
+          path: v0_flat/results/run7_forensic.json
+          retention-days: 90
