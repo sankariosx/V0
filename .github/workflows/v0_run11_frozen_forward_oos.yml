@@ -1,0 +1,52 @@
+name: V0 Run11 Frozen Forward OOS
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'v0_flat/run11_frozen_forward_oos.py'
+      - '.github/workflows/v0_run11_frozen_forward_oos.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v0-run11-frozen-forward-oos
+  cancel-in-progress: false
+
+jobs:
+  frozen-forward-oos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas==2.1.4 numpy==1.26.2 scipy==1.11.4
+      - name: Download recent Dukascopy XAUUSD M15 data
+        working-directory: v0_flat
+        run: |
+          mkdir -p data
+          npm install -g dukascopy-node
+          dukascopy-node -i xauusd -from 2026-07-01 -to 2026-10-03 -t m15 -f csv --batch-size 10 --batch-pause 1000
+          f="download/xauusd-m15-bid-2026-07-01-2026-10-03.csv"
+          test -f "$f"
+          cp "$f" data/xauusd_m15.csv
+          wc -l data/xauusd_m15.csv
+      - name: Run frozen forward OOS
+        working-directory: v0_flat
+        run: |
+          python3 -m py_compile run11_frozen_forward_oos.py
+          python3 -u run11_frozen_forward_oos.py
+      - name: Upload frozen OOS report
+        uses: actions/upload-artifact@v4
+        with:
+          name: v0-run11-frozen-forward-oos
+          path: v0_flat/results/run11_frozen_forward_oos.json
+          retention-days: 90
