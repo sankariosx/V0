@@ -32,7 +32,7 @@ from validation import split_discovery_validation, holm_step_down
 from tests import validate_candidates, DISCOVERY_FRAC
 
 ROOT = Path(__file__).resolve().parent
-DATA_PATH = ROOT / "data" / "nasdaq100_m15.csv"
+DATA_PATH = ROOT / "data" / "sp500_m15.csv"
 OUT_PATH = ROOT / "results" / "run12_walk_forward.json"
 
 FOLDS = [
@@ -197,7 +197,7 @@ def main():
         print(json.dumps(reports[-1], indent=2, default=float))
 
     report = {
-        "dataset": "Dukascopy Nasdaq-100 (USATECH.IDX/USD) M15 -> completed UTC 4H bars",
+        "dataset": "Dukascopy S&P 500 (USA500.IDX/USD) M15 -> completed UTC 4H bars",
         "purpose": "finite chronological walk-forward validation",
         "rules_changed_after_test": False,
         "test_data_used_for_selection": False,
