@@ -63,12 +63,19 @@ def make_4h_bars(m15):
         })
     return pd.DataFrame(rows).set_index("timestamp").sort_index()
 
+def rule_mask(feat, rule):
+    if rule["type"] == "2way":
+        return (
+            (feat[rule["features"][0]] > rule["thresholds"][0])
+            & (feat[rule["features"][1]] < rule["thresholds"][1])
+        )
+    return feat[rule["features"][0]] < rule["thresholds"][0]
+
 def main():
     m15 = load_m15(DATA_PATH)
     bars = make_4h_bars(m15)
     feat, target_norm = build_features(bars, horizon=1, vol_window=16)
 
-    # Rebuild the raw next-4H return on the exact feature index.
     raw_log_ret = np.log(bars["close"].shift(-1) / bars["close"]).reindex(feat.index)
     next_ts = pd.Series(feat.index, index=feat.index).shift(-1)
     contiguous = (next_ts - pd.Series(feat.index, index=feat.index)) == pd.Timedelta(hours=4)
@@ -77,10 +84,22 @@ def main():
     target_norm = target_norm.loc[mask]
     raw_log_ret = raw_log_ret.loc[mask]
 
-    # True forward period: features are computed with a warm-up history,
-    # but performance is measured only strictly after the frozen Run10 cutoff.
-    # Keeping the pre-cutoff history is necessary for rolling features;
-    # it does not leak pre-cutoff observations into the OOS performance sample.
+    # Keep the complete feature history for diagnostics. Only the performance
+    # sample below is frozen OOS after the Run10 cutoff.
+    historical_diagnostics = []
+    for rule in RULES:
+        cond_all = rule_mask(feat, rule).fillna(False)
+        fcols = rule["features"]
+        historical_diagnostics.append({
+            "name": rule["name"],
+            "historical_rows": int(len(feat)),
+            "historical_condition_hits": int(cond_all.sum()),
+            "historical_condition_rate": float(cond_all.mean()) if len(cond_all) else 0.0,
+            "feature_nan_counts": {c: int(feat[c].isna().sum()) for c in fcols},
+            "feature_min": {c: float(feat[c].min()) if feat[c].notna().any() else None for c in fcols},
+            "feature_max": {c: float(feat[c].max()) if feat[c].notna().any() else None for c in fcols},
+        })
+
     oos = feat.index > CUTOFF
     feat = feat.loc[oos]
     target_norm = target_norm.loc[oos]
@@ -88,18 +107,20 @@ def main():
 
     results = []
     for rule in RULES:
-        if rule["type"] == "2way":
-            cond = (feat[rule["features"][0]] > rule["thresholds"][0]) & (feat[rule["features"][1]] < rule["thresholds"][1])
-        else:
-            cond = feat[rule["features"][0]] < rule["thresholds"][0]
+        cond = rule_mask(feat, rule).fillna(False)
         r = raw_log_ret[cond].dropna()
         yn = target_norm[cond].dropna()
-        if len(r) == 0:
-            results.append({"name": rule["name"], "n_signals": 0})
-            continue
-        results.append({
+        result = {
             "name": rule["name"],
             "direction": rule["direction"],
+            "oos_condition_hits": int(cond.sum()),
+            "oos_condition_rate": float(cond.mean()) if len(cond) else 0.0,
+        }
+        if len(r) == 0:
+            result["n_signals"] = 0
+            results.append(result)
+            continue
+        result.update({
             "n_signals": int(len(r)),
             "signal_rate": float(len(r) / len(raw_log_ret)),
             "mean_raw_log_return": float(r.mean()),
@@ -114,6 +135,7 @@ def main():
             "first_signal": str(r.index.min()),
             "last_signal": str(r.index.max()),
         })
+        results.append(result)
 
     report = {
         "dataset": "Dukascopy XAUUSD M15 -> completed UTC 4H bars",
@@ -124,6 +146,7 @@ def main():
         "rules_frozen_from_run10": True,
         "discovery_performed": False,
         "rules": RULES,
+        "historical_frequency_diagnostic": historical_diagnostics,
         "results": results,
     }
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
