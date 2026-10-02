@@ -2,10 +2,6 @@ name: V0 Run12 Finite Walk-Forward
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'v0_flat/run12_walk_forward.py'
-      - '.github/workflows/v0_run12_walk_forward.yml'
 
 permissions:
   contents: read
@@ -33,16 +29,16 @@ jobs:
           pip install interpret==0.4.4 scikit-learn==1.3.2 pandas==2.1.4 numpy==1.26.2 scipy==1.11.4
           python -c "from interpret.glassbox import ExplainableBoostingRegressor; print('REAL EBM OK')"
 
-      - name: Download full Dukascopy XAUUSD M15 data
+      - name: Download full Dukascopy Nasdaq-100 M15 data
         working-directory: v0_flat
         run: |
           mkdir -p data
           npm install -g dukascopy-node
-          dukascopy-node -i xauusd -from 2015-01-01 -to 2026-09-01 -t m15 -f csv --batch-size 10 --batch-pause 1000
-          f="download/xauusd-m15-bid-2015-01-01-2026-09-01.csv"
+          dukascopy-node -i usatechidxusd -from 2015-01-01 -to 2026-09-01 -t m15 -f csv --batch-size 10 --batch-pause 1000
+          f="download/usatechidxusd-m15-bid-2015-01-01-2026-09-01.csv"
           test -f "$f"
-          cp "$f" data/xauusd_m15.csv
-          wc -l data/xauusd_m15.csv
+          cp "$f" data/nasdaq100_m15.csv
+          wc -l data/nasdaq100_m15.csv
 
       - name: Run finite walk-forward
         working-directory: v0_flat
@@ -53,6 +49,6 @@ jobs:
       - name: Upload final walk-forward report
         uses: actions/upload-artifact@v4
         with:
-          name: v0-run12-walk-forward
+          name: v0-run12-nasdaq100-walk-forward
           path: v0_flat/results/run12_walk_forward.json
           retention-days: 90
