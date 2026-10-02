@@ -2,6 +2,10 @@ name: V0 Run10 Direct 4H Discovery
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'v0_flat/run10_direct_4h_discovery.py'
+      - '.github/workflows/v0_run10_direct_4h.yml'
 
 permissions:
   contents: read
