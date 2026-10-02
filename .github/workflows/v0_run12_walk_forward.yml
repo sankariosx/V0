@@ -42,7 +42,7 @@ jobs:
           f="download/usa500idxusd-m15-bid-2015-01-01-2026-09-01.csv"
           test -f "$f"
           cp "$f" data/sp500_m15.csv
-          wc -l data/nasdaq100_m15.csv
+          wc -l data/sp500_m15.csv
 
       - name: Run finite walk-forward
         working-directory: v0_flat
