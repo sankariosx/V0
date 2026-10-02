@@ -249,6 +249,7 @@ def summarize(results):
     gross_loss = float(-np.sum([r for r in rvals if r < 0])) if rvals else 0.0
     profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else None
     invalid_r = sum(x["outcome"] in ("success", "failure") and x["R"] is None for x in results)
+    r_sample = len(rvals)
     def mean(key):
         vals = [x[key] for x in results if x[key] is not None]
         return float(np.mean(vals)) if vals else None
@@ -263,7 +264,9 @@ def summarize(results):
         "immediate_successes": immediate,
         "delayed_successes": delayed,
         "total_R": total_r,
-        "expectancy_R_per_resolved_setup": mean_r,
+        "R_calculated_setups": r_sample,
+        "R_excluded_invalid_or_ambiguous": resolved - r_sample,
+        "expectancy_R_per_R_calculated_setup": mean_r,
         "mean_win_R": (float(np.mean([x["R"] for x in results if x["R"] is not None and x["R"] > 0]))
                        if any(x["R"] is not None and x["R"] > 0 for x in results) else None),
         "gross_profit_R": gross_profit,
