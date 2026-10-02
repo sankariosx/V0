@@ -8,7 +8,7 @@ Purpose:
   chronological block.
 - No discovery is performed on any test block.
 
-Two folds are used:
+This is the single finite validation run; no follow-up diagnostic is planned unless the run itself exposes an implementation failure.\n\nTwo folds are used:
   Fold A: train through 2022-12-31, test 2023-01-01 -> 2024-12-31
   Fold B: train through 2024-12-31, test 2025-01-01 -> 2026-09-01
 
