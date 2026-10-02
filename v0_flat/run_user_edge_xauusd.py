@@ -67,6 +67,19 @@ def finish_record(direction, start_i, start_ts, signal_i, signal_ts, entry,
                   target, failure, outcome, outcome_i, outcome_ts, ambiguous=False):
     bars_to_signal = signal_i - start_i
     bars_to_outcome = None if outcome_i is None else outcome_i - signal_i
+    # Directional R: risk must be measured from entry to the failure
+    # level in the direction of the trade, and reward from entry to target.
+    if ambiguous or outcome not in ("success", "failure"):
+        r_value = None
+    elif direction == "bull":
+        risk = entry - failure
+        reward = target - entry
+        r_value = (reward / risk) if risk > 0 and reward > 0 else None
+    else:
+        risk = failure - entry
+        reward = entry - target
+        r_value = (reward / risk) if risk > 0 and reward > 0 else None
+
     return {
         "direction": direction,
         "start": str(start_ts),
@@ -74,8 +87,7 @@ def finish_record(direction, start_i, start_ts, signal_i, signal_ts, entry,
         "entry": float(entry),
         "target": float(target),
         "failure_level": float(failure),
-        "R": (None if ambiguous or outcome not in ("success", "failure") else
-              (abs(target - entry) / abs(entry - failure) if outcome == "success" else -1.0)),
+        "R": r_value,
         "outcome": outcome,
         "ambiguous_same_bar": bool(ambiguous),
         "bars_to_signal": int(bars_to_signal),
@@ -223,6 +235,10 @@ def summarize(results):
     rvals = [x["R"] for x in results if x["R"] is not None]
     mean_r = float(np.mean(rvals)) if rvals else None
     total_r = float(np.sum(rvals)) if rvals else None
+    gross_profit = float(np.sum([r for r in rvals if r > 0])) if rvals else 0.0
+    gross_loss = float(-np.sum([r for r in rvals if r < 0])) if rvals else 0.0
+    profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else None
+    invalid_r = sum(x["outcome"] in ("success", "failure") and x["R"] is None for x in results)
     def mean(key):
         vals = [x[key] for x in results if x[key] is not None]
         return float(np.mean(vals)) if vals else None
@@ -240,6 +256,10 @@ def summarize(results):
         "expectancy_R_per_resolved_setup": mean_r,
         "mean_win_R": (float(np.mean([x["R"] for x in results if x["R"] is not None and x["R"] > 0]))
                        if any(x["R"] is not None and x["R"] > 0 for x in results) else None),
+        "gross_profit_R": gross_profit,
+        "gross_loss_R": gross_loss,
+        "profit_factor": profit_factor,
+        "invalid_directional_R_cases": invalid_r,
         "mean_bars_to_signal": mean("bars_to_signal"),
         "mean_bars_to_outcome": mean("bars_to_outcome"),
     }
