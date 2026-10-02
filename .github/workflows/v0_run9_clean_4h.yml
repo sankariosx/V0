@@ -1,0 +1,33 @@
+name: V0 Run9 Clean 4H Edge Test
+on:
+  push:
+    paths:
+      - v0_flat/run9_clean_4h.py
+      - .github/workflows/v0_run9_clean_4h.yml
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency: {group: v0-run9-clean-4h, cancel-in-progress: true}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.10'}
+      - run: |
+          python -m pip install --upgrade pip
+          pip install pandas==2.1.4 numpy==1.26.2 scipy==1.11.4
+      - name: Download Dukascopy XAUUSD M15
+        working-directory: v0_flat
+        run: |
+          mkdir -p data results
+          npm install -g dukascopy-node
+          dukascopy-node -i xauusd -from 2015-01-01 -to 2026-09-01 -t m15 -f csv --batch-size 10 --batch-pause 1000
+          cp download/xauusd-m15-bid-2015-01-01-2026-09-01.csv data/xauusd_m15.csv
+      - run: python3 -u v0_flat/run9_clean_4h.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v0-run9-clean-4h
+          path: v0_flat/results/run9_clean_4h.json
+          retention-days: 90
