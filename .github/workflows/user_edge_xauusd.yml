@@ -33,7 +33,8 @@ jobs:
           mkdir -p data
           npm install -g dukascopy-node
           dukascopy-node -i xauusd -from 2015-01-01 -to 2026-10-03 -t m15 -f csv --batch-size 10 --batch-pause 1000
-          f="download/xauusd-m15-bid-2015-01-01-2026-10-03.csv"
+          f="$(find download -maxdepth 1 -type f -name 'xauusd-m15-bid-*.csv' -print | sort | tail -n 1)"
+          test -n "$f"
           test -f "$f"
           cp "$f" data/xauusd_m15.csv
           wc -l data/xauusd_m15.csv
