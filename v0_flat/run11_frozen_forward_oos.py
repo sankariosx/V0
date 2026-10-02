@@ -77,7 +77,10 @@ def main():
     target_norm = target_norm.loc[mask]
     raw_log_ret = raw_log_ret.loc[mask]
 
-    # True forward period: no observation at or before the Run10 data cutoff.
+    # True forward period: features are computed with a warm-up history,
+    # but performance is measured only strictly after the frozen Run10 cutoff.
+    # Keeping the pre-cutoff history is necessary for rolling features;
+    # it does not leak pre-cutoff observations into the OOS performance sample.
     oos = feat.index > CUTOFF
     feat = feat.loc[oos]
     target_norm = target_norm.loc[oos]
