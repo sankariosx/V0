@@ -2,6 +2,10 @@ name: V0 Run12 Finite Walk-Forward
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'v0_flat/run12_walk_forward.py'
+      - '.github/workflows/v0_run12_walk_forward.yml'
 
 permissions:
   contents: read
