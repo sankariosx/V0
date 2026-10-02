@@ -39,6 +39,12 @@ jobs:
           cp "$f" data/xauusd_m15.csv
           wc -l data/xauusd_m15.csv
 
+      - name: Install Python dependencies
+        working-directory: v0_flat
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install numpy pandas
+
       - name: Run deterministic edge test
         working-directory: v0_flat
         run: |
