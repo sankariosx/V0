@@ -74,11 +74,21 @@ def finish_record(direction, start_i, start_ts, signal_i, signal_ts, entry,
     elif direction == "bull":
         risk = entry - failure
         reward = target - entry
-        r_value = (reward / risk) if risk > 0 and reward > 0 else None
+        if risk > 0:
+            r_value = (reward / risk) if reward > 0 else None
+            if outcome == "failure":
+                r_value = -1.0
+        else:
+            r_value = None
     else:
         risk = failure - entry
         reward = entry - target
-        r_value = (reward / risk) if risk > 0 and reward > 0 else None
+        if risk > 0:
+            r_value = (reward / risk) if reward > 0 else None
+            if outcome == "failure":
+                r_value = -1.0
+        else:
+            r_value = None
 
     return {
         "direction": direction,
