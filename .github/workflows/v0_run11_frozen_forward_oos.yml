@@ -51,4 +51,5 @@ jobs:
           path: v0_flat/results/run11_frozen_forward_oos.json
           retention-days: 90
 
+# Frozen-rule frequency diagnostic enabled; no rule thresholds or discovery logic changed.
 # Fixed Dukascopy's dynamic end-date filename; the downloaded file is now selected safely.
