@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from run_user_edge_xauusd import load_m15, aggregate, add_ema, scan, summarize, TIMEFRAMES, DATA_PATH
+from run_user_edge_xauusd import load_m15, aggregate, add_ema, scan_one_setup_at_a_time, summarize, TIMEFRAMES, DATA_PATH
 
 OOS_START = "2025-01-01T00:00:00+00:00"
 OUT_PATH = Path("v0_flat/results/user_edge_xauusd_oos.json")
@@ -26,9 +26,9 @@ def main():
     for name, tf in TIMEFRAMES.items():
         full_bars = add_ema(aggregate(m15, tf)).dropna(subset=["ema21"])
         bars = full_bars[full_bars.index >= cutoff]
-        bull = scan(bars, "bull")
-        bear = scan(bars, "bear")
-        all_results = bull + bear
+        all_results = scan_one_setup_at_a_time(bars)
+        bull = [x for x in all_results if x["direction"] == "bull"]
+        bear = [x for x in all_results if x["direction"] == "bear"]
         report["timeframes"][name] = {
             "bars_in_oos": int(len(bars)),
             "start": str(bars.index.min()) if len(bars) else None,
