@@ -2,6 +2,8 @@ name: User Edge XAUUSD Frozen OOS Test
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 1 * * 1'
   push:
     paths:
       - 'v0_flat/run_user_edge_oos.py'
@@ -25,16 +27,18 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: Download Dukascopy XAUUSD M15 data
+      - name: Download latest Dukascopy XAUUSD M15 data
         working-directory: v0_flat
         run: |
           mkdir -p data
           npm install -g dukascopy-node
-          dukascopy-node -i xauusd -from 2015-01-01 -to 2026-10-03 -t m15 -f csv --batch-size 10 --batch-pause 1000
+          TO_DATE="$(date -u +%F)"
+          dukascopy-node -i xauusd -from 2015-01-01 -to "$TO_DATE" -t m15 -f csv --batch-size 10 --batch-pause 1000
           f="$(find download -maxdepth 1 -type f -name 'xauusd-m15-bid-*.csv' -print | sort | tail -n 1)"
           test -n "$f"
           test -f "$f"
           cp "$f" data/xauusd_m15.csv
+          echo "Data through: $TO_DATE"
           wc -l data/xauusd_m15.csv
       - name: Install Python dependencies
         working-directory: v0_flat
