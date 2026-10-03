@@ -234,6 +234,52 @@ def scan(df, direction):
 
     return results
 
+def scan_one_setup_at_a_time(df):
+    """Scan both directions chronologically, enforcing one active setup globally."""
+    df = df.reset_index().rename(columns={"index": "timestamp"})
+    rows = df.to_dict("records")
+    n = len(rows)
+    results = []
+    i = 0
+
+    while i <= n - 7:
+        direction = None
+        for candidate in ("bull", "bear"):
+            ok = True
+            for k in range(4):
+                r = rows[i+k]
+                if candidate == "bull":
+                    ok &= green(r) and r["close"] > r["ema21"]
+                else:
+                    ok &= red(r) and r["close"] < r["ema21"]
+            if not ok:
+                continue
+            r1, g5 = rows[i+4], rows[i+5]
+            if candidate == "bull":
+                valid = red(r1) and green(g5) and g5["high"] < rows[i+3]["high"]
+            else:
+                valid = green(r1) and red(g5) and g5["low"] > rows[i+3]["low"]
+            if valid:
+                direction = candidate
+                break
+
+        if direction is None:
+            i += 1
+            continue
+
+        one = scan(df.iloc[i:].copy(), direction)
+        if not one:
+            break
+        result = one[0]
+        results.append(result)
+
+        if result["bars_to_outcome"] is None:
+            break
+        i = i + result["bars_to_signal"] + result["bars_to_outcome"] + 1
+
+    return results
+
+
 def summarize(results):
     total = len(results)
     wins = sum(x["outcome"] == "success" for x in results)
@@ -293,9 +339,9 @@ def main():
         bars = add_ema(aggregate(m15, tf))
         # Only completed bars with an EMA are eligible.
         bars = bars.dropna(subset=["ema21"])
-        bull = scan(bars, "bull")
-        bear = scan(bars, "bear")
-        all_results = bull + bear
+        all_results = scan_one_setup_at_a_time(bars)
+        bull = [x for x in all_results if x["direction"] == "bull"]
+        bear = [x for x in all_results if x["direction"] == "bear"]
         report["timeframes"][name] = {
             "bars": int(len(bars)),
             "start": str(bars.index.min()) if len(bars) else None,
