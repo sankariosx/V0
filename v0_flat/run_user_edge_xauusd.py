@@ -113,6 +113,7 @@ def scan(df, direction):
     n = len(rows)
     results = []
     i = 0
+    blocked = None
 
     while i <= n - 7:
         # Initial trend sequence.
@@ -274,10 +275,20 @@ def scan_one_setup_at_a_time(df):
         results.append(result)
 
         if result["bars_to_outcome"] is None:
+            blocked = {
+                "direction": result["direction"],
+                "start": result["start"],
+                "signal": result["signal"],
+                "entry": result["entry"],
+                "target": result["target"],
+                "failure_level": result["failure_level"],
+                "reason": "active setup never reached target/failure before dataset end",
+                "dataset_end": str(rows[-1]["timestamp"]),
+            }
             break
         i = i + result["bars_to_signal"] + result["bars_to_outcome"] + 1
 
-    return results
+    return results, blocked
 
 
 def summarize(results):
@@ -339,7 +350,7 @@ def main():
         bars = add_ema(aggregate(m15, tf))
         # Only completed bars with an EMA are eligible.
         bars = bars.dropna(subset=["ema21"])
-        all_results = scan_one_setup_at_a_time(bars)
+        all_results, blocked = scan_one_setup_at_a_time(bars)
         bull = [x for x in all_results if x["direction"] == "bull"]
         bear = [x for x in all_results if x["direction"] == "bear"]
         report["timeframes"][name] = {
@@ -350,7 +361,9 @@ def main():
             "bearish": summarize(bear),
             "combined": summarize(all_results),
             "setups": all_results,
+            "blocked_unresolved_setup": blocked,
         }
+        print(name, "blocked_unresolved_setup=", json.dumps(blocked, default=str))
         print(name, json.dumps(report["timeframes"][name], indent=2, default=str))
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
