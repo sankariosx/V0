@@ -1,17 +1,18 @@
-"""Frozen out-of-sample test of the user's XAUUSD edge.
-Rules are imported unchanged from the historical deterministic tester.
-OOS setups must START on or after OOS_START; EMA is still calculated from full history.
-"""
+"""Frozen out-of-sample test of the user's XAUUSD edge."""
 import json
+import sys
 from pathlib import Path
-from v0_flat.run_user_edge_xauusd import load_m15, aggregate, add_ema, scan, summarize, TIMEFRAMES, DATA_PATH
+import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from run_user_edge_xauusd import load_m15, aggregate, add_ema, scan, summarize, TIMEFRAMES, DATA_PATH
 
 OOS_START = "2025-01-01T00:00:00+00:00"
 OUT_PATH = Path("v0_flat/results/user_edge_xauusd_oos.json")
 
 def main():
     m15 = load_m15(DATA_PATH)
-    cutoff = __import__("pandas").Timestamp(OOS_START)
+    cutoff = pd.Timestamp(OOS_START)
     report = {
         "instrument": "XAUUSD",
         "source": "Dukascopy M15",
@@ -23,8 +24,8 @@ def main():
         "timeframes": {},
     }
     for name, tf in TIMEFRAMES.items():
-        bars = add_ema(aggregate(m15, tf)).dropna(subset=["ema21"])
-        bars = bars[bars.index >= cutoff]
+        full_bars = add_ema(aggregate(m15, tf)).dropna(subset=["ema21"])
+        bars = full_bars[full_bars.index >= cutoff]
         bull = scan(bars, "bull")
         bear = scan(bars, "bear")
         all_results = bull + bear
