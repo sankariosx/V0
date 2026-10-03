@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'v0_flat/run_user_edge_xauusd.py'
+      - 'v0_flat/analyze_user_edge_stats.py'
       - '.github/workflows/user_edge_xauusd.yml'
 
 permissions:
@@ -51,9 +52,17 @@ jobs:
           python3 -m py_compile run_user_edge_xauusd.py
           python3 -u run_user_edge_xauusd.py
 
-      - name: Upload report
+      - name: Run statistical audit
+        working-directory: v0_flat
+        run: |
+          python3 -m py_compile analyze_user_edge_stats.py
+          python3 -u analyze_user_edge_stats.py
+
+      - name: Upload reports
         uses: actions/upload-artifact@v4
         with:
-          name: user-edge-xauusd-multitimeframe
-          path: v0_flat/results/user_edge_xauusd_timeframes.json
+          name: user-edge-xauusd-statistical-audit
+          path: |
+            v0_flat/results/user_edge_xauusd_timeframes.json
+            v0_flat/results/user_edge_xauusd_stats.json
           retention-days: 90
