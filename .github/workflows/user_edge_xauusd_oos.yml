@@ -9,6 +9,7 @@ on:
       - 'v0_flat/run_user_edge_oos.py'
       - '.github/workflows/user_edge_xauusd_oos.yml'
 
+# Manual kickoff: this workflow also runs on push so frozen OOS can be started immediately when needed.
 permissions:
   contents: read
 
