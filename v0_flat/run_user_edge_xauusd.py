@@ -241,6 +241,7 @@ def scan_one_setup_at_a_time(df):
     rows = df.to_dict("records")
     n = len(rows)
     results = []
+    blocked = None
     i = 0
 
     while i <= n - 7:
