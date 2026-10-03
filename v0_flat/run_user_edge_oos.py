@@ -25,8 +25,13 @@ def main():
     }
     for name, tf in TIMEFRAMES.items():
         full_bars = add_ema(aggregate(m15, tf)).dropna(subset=["ema21"])
+        # Run the frozen one-setup-at-a-time state machine from the full
+        # history, then select only setups whose initial sequence starts on
+        # or after the OOS cutoff. This preserves the real historical state
+        # and prevents the OOS window from resetting an already-active setup.
+        full_results, blocked = scan_one_setup_at_a_time(full_bars)
+        all_results = [x for x in full_results if pd.Timestamp(x["start"]) >= cutoff]
         bars = full_bars[full_bars.index >= cutoff]
-        all_results = scan_one_setup_at_a_time(bars)
         bull = [x for x in all_results if x["direction"] == "bull"]
         bear = [x for x in all_results if x["direction"] == "bear"]
         report["timeframes"][name] = {
@@ -37,6 +42,7 @@ def main():
             "bearish": summarize(bear),
             "combined": summarize(all_results),
             "setups": all_results,
+            "full_scan_blocked_unresolved_setup": blocked,
         }
         print(name, json.dumps(report["timeframes"][name], indent=2, default=str))
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
